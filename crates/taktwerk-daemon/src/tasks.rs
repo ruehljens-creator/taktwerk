@@ -197,17 +197,36 @@ pub fn start_tx(
             debug!(%dest, "SAP-Announce gesendet");
         }
 
+        // Transiente Sendefehler tolerieren: Ein einzelnes `send_to` kann auf
+        // manchen OS kurz fehlschlagen (z. B. macOS `No route to host`, während
+        // die interface-gebundene Multicast-Route neu geklont wird). Ein AES67-
+        // Sender darf den Stream deshalb nicht abbrechen — Paket verwerfen,
+        // weiterlaufen. Erst bei *anhaltendem* Fehler (~1 s ununterbrochen) geben
+        // wir auf (Kabel gezogen / Interface weg).
+        let mut consecutive_err: u32 = 0;
+        const MAX_CONSECUTIVE_ERR: u32 = 1000;
         loop {
             tokio::select! {
                 _ = media_tick.tick() => {
-                    if let Err(e) = tx.pump_once().await {
-                        error!("TX-Sende-Fehler: {e}");
-                        break;
-                    }
-                    let n = tx.packets_sent();
-                    packets_task.store(n, Ordering::Relaxed);
-                    if n % 1000 == 0 {
-                        debug!(packets = n, "TX läuft");
+                    match tx.pump_once().await {
+                        Ok(()) => {
+                            consecutive_err = 0;
+                            let n = tx.packets_sent();
+                            packets_task.store(n, Ordering::Relaxed);
+                            if n % 1000 == 0 {
+                                debug!(packets = n, "TX läuft");
+                            }
+                        }
+                        Err(e) => {
+                            consecutive_err += 1;
+                            if consecutive_err == 1 || consecutive_err % 250 == 0 {
+                                warn!(consecutive_err, "TX-Sende-Fehler (transient, übersprungen): {e}");
+                            }
+                            if consecutive_err >= MAX_CONSECUTIVE_ERR {
+                                error!(consecutive_err, "TX-Sende-Fehler anhaltend — Stream beendet: {e}");
+                                break;
+                            }
+                        }
                     }
                 }
                 _ = sap_tick.tick() => {
