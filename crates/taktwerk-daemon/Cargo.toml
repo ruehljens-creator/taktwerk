@@ -16,6 +16,7 @@ taktwerk-audio = { path = "../taktwerk-audio" }
 taktwerk-net = { path = "../taktwerk-net" }
 taktwerk-endpoint = { path = "../taktwerk-endpoint" }
 taktwerk-router = { path = "../taktwerk-router" }
+taktwerk-discovery = { path = "../taktwerk-discovery" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }

@@ -109,6 +109,26 @@ impl TrafficMonitor {
         self.totals.entry(proto).or_default().add(bytes);
     }
 
+    /// Registriert ein Gerät **ohne** Traffic (z. B. per mDNS/RAVENNA entdeckt).
+    /// Setzt/verbessert nur IP-Eintrag, Name und `last_seen`.
+    pub fn note_device(&mut self, ip: Ipv4Addr, name: Option<String>) {
+        let now = now_unix();
+        let dev = self.devices.entry(ip).or_default();
+        if dev.first_seen == 0 {
+            dev.first_seen = now;
+        }
+        dev.last_seen = now;
+        if let Some(n) = name {
+            let replace = match &dev.name {
+                None => true,
+                Some(cur) => cur.starts_with("PTP ") && !n.starts_with("PTP "),
+            };
+            if replace {
+                dev.name = Some(n);
+            }
+        }
+    }
+
     /// Aktualisiert alle 1-s-Raten (im Sekundentakt aufrufen).
     pub fn tick(&mut self) {
         for dev in self.devices.values_mut() {

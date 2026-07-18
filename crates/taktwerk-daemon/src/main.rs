@@ -15,6 +15,7 @@
 mod handlers;
 mod logging;
 mod monitor;
+mod ravenna;
 mod state;
 mod tasks;
 
@@ -62,6 +63,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(tasks::discovery_task(iface, app_state.clone()));
     tokio::spawn(tasks::ptp_monitor_task(iface, app_state.clone()));
     tokio::spawn(tasks::rate_task(app_state.clone()));
+
+    // RAVENNA: mDNS-Discovery + eigenen Stream als RAVENNA-Session anbieten
+    // (mDNS-Advertise + RTSP-Server für DESCRIBE).
+    let rtsp_http: SocketAddr = std::env::var("TAKTWERK_RTSP")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| SocketAddr::from(([0, 0, 0, 0], 8554)));
+    match taktwerk_discovery::MdnsDiscovery::new() {
+        Ok(mdns) => {
+            tokio::spawn(ravenna::rtsp_server(rtsp_http, app_state.clone()));
+            ravenna::advertise(&mdns, &name, iface, rtsp_http.port());
+            tokio::spawn(ravenna::discovery_task(app_state.clone(), mdns));
+        }
+        Err(e) => error!("mDNS/RAVENNA nicht verfügbar: {e}"),
+    }
 
     // NMOS-Control-Plane (IS-04/IS-05) als eigener Server (berührt den Audiopfad nicht).
     {

@@ -69,7 +69,7 @@
     <h2>Discovery (SAP)</h2>
     <div id="disc-empty" class="muted">Noch keine Streams entdeckt.</div>
     <table id="disc-table" style="display:none">
-      <thead><tr><th>Name</th><th>Gruppe</th><th>ch</th><th>Quelle</th></tr></thead>
+      <thead><tr><th>Name</th><th>Via</th><th>Gruppe</th><th>ch</th><th>Quelle</th></tr></thead>
       <tbody id="disc-body"></tbody>
     </table>
   </section>
@@ -211,7 +211,7 @@ async function refresh() {
       $("disc-empty").style.display = "none"; $("disc-table").style.display = "";
       for (const d of disc) {
         const tr = document.createElement("tr"); tr.className = "clk";
-        tr.innerHTML = `<td>${d.session_name}</td><td>${d.multicast_addr}:${d.port}</td><td>${d.channels}</td><td>${d.source}</td>`;
+        tr.innerHTML = `<td>${d.session_name}</td><td>${d.via || ""}</td><td>${d.multicast_addr}:${d.port}</td><td>${d.channels}</td><td>${d.source}</td>`;
         tr.onclick = () => { $("rx-group").value = d.multicast_addr; $("rx-port").value = d.port; $("rx-ch").value = d.channels; };
         body.appendChild(tr);
       }

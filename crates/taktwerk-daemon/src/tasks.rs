@@ -77,6 +77,7 @@ pub async fn discovery_task(iface: Ipv4Addr, state: AppState) {
                                 channels: s.profile.channels,
                                 sample_rate: s.profile.sample_rate,
                                 source: Ipv4Addr::from(ev.source),
+                                via: "SAP",
                                 last_seen: now_unix(),
                             },
                         );

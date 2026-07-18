@@ -62,6 +62,8 @@ pub struct DiscoveredDto {
     pub channels: u8,
     pub sample_rate: u32,
     pub source: String,
+    /// Entdeckungsweg: "SAP" oder "RAVENNA".
+    pub via: &'static str,
     pub last_seen: u64,
 }
 
@@ -142,6 +144,7 @@ pub async fn discovered(State(state): State<AppState>) -> Json<Vec<DiscoveredDto
             channels: e.channels,
             sample_rate: e.sample_rate,
             source: e.source.to_string(),
+            via: e.via,
             last_seen: e.last_seen,
         })
         .collect();

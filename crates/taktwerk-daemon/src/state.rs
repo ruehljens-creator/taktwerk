@@ -20,7 +20,7 @@ pub struct NodeInfo {
     pub profile: StreamProfile,
 }
 
-/// Ein per SAP entdeckter fremder Stream.
+/// Ein entdeckter fremder Stream (per SAP oder RAVENNA/mDNS).
 #[derive(Debug, Clone)]
 pub struct DiscoveredEntry {
     pub session_name: String,
@@ -29,6 +29,8 @@ pub struct DiscoveredEntry {
     pub channels: u8,
     pub sample_rate: u32,
     pub source: Ipv4Addr,
+    /// Entdeckungsweg: "SAP" oder "RAVENNA".
+    pub via: &'static str,
     /// Unix-Sekunden des letzten Announcements.
     pub last_seen: u64,
 }
