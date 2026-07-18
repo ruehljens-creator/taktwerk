@@ -11,15 +11,18 @@ use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde_json::json;
 
+use crate::receiver::{self, ReceiverControl};
 use crate::resources::NmosNode;
 
 type Node = Arc<NmosNode>;
 
 /// Baut die fertige NMOS-App (Node- + Connection-API + Discovery-Wurzeln).
-pub fn app(node: Node) -> Router {
+/// `control` ist die steuerbare Senke (unser Receiver) für IS-05-`PATCH`.
+pub fn app(node: Node, control: Arc<dyn ReceiverControl>) -> Router {
+    let r = "/x-nmos/connection/v1.1/single/receivers";
     Router::new()
         // Discovery-Wurzeln
         .route(
@@ -119,7 +122,25 @@ pub fn app(node: Node) -> Router {
             "/x-nmos/connection/v1.1/single/senders/:id/transportfile/",
             get(is05_transportfile),
         )
+        // IS-05 Receiver (steuerbare Senke) — der Koppelpunkt sitzt auf `staged`.
+        .route(r, get(receiver::list))
+        .route(&format!("{r}/"), get(receiver::list))
+        .route(&format!("{r}/:id"), get(receiver::root))
+        .route(&format!("{r}/:id/"), get(receiver::root))
+        .route(&format!("{r}/:id/constraints"), get(receiver::constraints))
+        .route(&format!("{r}/:id/constraints/"), get(receiver::constraints))
+        .route(
+            &format!("{r}/:id/staged"),
+            get(receiver::staged_get).patch(receiver::staged_patch),
+        )
+        .route(
+            &format!("{r}/:id/staged/"),
+            get(receiver::staged_get).patch(receiver::staged_patch),
+        )
+        .route(&format!("{r}/:id/active"), get(receiver::active_get))
+        .route(&format!("{r}/:id/active/"), get(receiver::active_get))
         .with_state(node)
+        .layer(Extension(control))
 }
 
 // ---- IS-04 ----

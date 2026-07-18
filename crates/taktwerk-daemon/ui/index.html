@@ -140,6 +140,18 @@
   </section>
 
   <section class="panel wide">
+    <h2>Kreuzschiene (Routing)</h2>
+    <div id="grid-empty" class="muted">Keine Sender/Receiver bekannt.</div>
+    <div style="overflow-x:auto"><table id="grid" style="display:none">
+      <thead><tr><th>Sender ↓ / Receiver →</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="muted" style="margin-top:8px">Zelle klicken = Koppelpunkt setzen/lösen
+      (via NMOS IS-05). Steuerbar sind NMOS-Receiver + eigene Senke.</div>
+    <div class="err" id="grid-err"></div>
+  </section>
+
+  <section class="panel wide">
     <h2>APIs</h2>
     <div class="muted">REST: diese Oberfläche (<code>/devices</code>, <code>/traffic</code>, …) ·
       NMOS IS-04/IS-05 auf eigenem Port unter <code>/x-nmos/</code>.</div>
@@ -193,14 +205,50 @@ function renderDevices(devs) {
   }
 }
 
+async function routeCell(receiver, sender, connected) {
+  $("grid-err").textContent = "";
+  const body = { host: receiver.nmos_host, port: receiver.nmos_port, receiver_id: receiver.id };
+  if (connected) { body.disconnect = true; }
+  else { body.group = sender.group; body.media_port = sender.port; body.channels = sender.channels; }
+  try { await jpost("/route", body); setTimeout(refresh, 300); }
+  catch (e) { $("grid-err").textContent = "Route fehlgeschlagen: " + e.message; }
+}
+
+function renderGrid(reg) {
+  const senders = reg.senders || [], receivers = reg.receivers || [];
+  const table = $("grid");
+  if (!senders.length || !receivers.length) { $("grid-empty").style.display = ""; table.style.display = "none"; return; }
+  $("grid-empty").style.display = "none"; table.style.display = "";
+  const head = table.querySelector("thead tr");
+  head.innerHTML = "<th>Sender ↓ / Receiver →</th>" + receivers.map(r => `<th>${r.name}</th>`).join("");
+  const body = table.querySelector("tbody"); body.innerHTML = "";
+  for (const s of senders) {
+    const tr = document.createElement("tr");
+    let cells = `<td>${s.name} <span class="muted">${s.group}:${s.port}</span></td>`;
+    for (const r of receivers) {
+      const connected = r.source === `${s.group}:${s.port}`;
+      cells += `<td style="text-align:center;cursor:pointer" data-r="${r.id}" data-s="${s.id}">` +
+        `<span style="font-size:18px;color:${connected ? 'var(--ok)' : 'var(--off)'}">${connected ? '●' : '○'}</span></td>`;
+    }
+    tr.innerHTML = cells;
+    tr.querySelectorAll("td[data-r]").forEach((td, i) => {
+      const r = receivers[i];
+      const connected = r.source === `${s.group}:${s.port}`;
+      td.onclick = () => routeCell(r, s, connected);
+    });
+    body.appendChild(tr);
+  }
+}
+
 async function refresh() {
   try {
-    const [node, tx, rx, disc, devs, traffic, ptp] = await Promise.all([
+    const [node, tx, rx, disc, devs, traffic, ptp, reg] = await Promise.all([
       jget("/node"), jget("/streams/tx"), jget("/streams/rx"), jget("/streams/discovered"),
-      jget("/devices"), jget("/traffic"), jget("/ptp"),
+      jget("/devices"), jget("/traffic"), jget("/ptp"), jget("/registry"),
     ]);
     renderTraffic(traffic);
     renderDevices(devs);
+    renderGrid(reg);
 
     if (!ptp.enabled) { setStatus($("ptp-status"), false, "aus (System-Clock)"); }
     else { setStatus($("ptp-status"), ptp.synced, ptp.synced ? "gelockt" : "sucht Master…"); }

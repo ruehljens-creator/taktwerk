@@ -11,6 +11,7 @@ taktwerk-core = { path = "../taktwerk-core" }
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["net", "io-util", "rt"] }
 tracing = { workspace = true }
 
 [dev-dependencies]

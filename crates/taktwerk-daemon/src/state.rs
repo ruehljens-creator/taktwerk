@@ -22,6 +22,10 @@ pub struct NodeInfo {
     pub profile: StreamProfile,
     /// Ob der PTP-Slave (Lock an Grandmaster) aktiviert ist.
     pub ptp_slave: bool,
+    /// NMOS-Host (für die Kreuzschiene, um den eigenen Receiver zu adressieren).
+    pub nmos_host: String,
+    /// NMOS-Port.
+    pub nmos_port: u16,
 }
 
 /// Ein entdeckter fremder Stream (per SAP oder RAVENNA/mDNS).
@@ -59,6 +63,8 @@ pub struct RxControl {
     pub packets: Arc<AtomicU64>,
     pub shutdown: Option<watch::Sender<bool>>,
     pub handle: Option<JoinHandle<()>>,
+    /// SDP, mit der das aktuelle Abonnement gesetzt wurde (via IS-05/Kreuzschiene).
+    pub active_sdp: Option<String>,
 }
 
 /// Der von allen Handlern geteilte App-Zustand.

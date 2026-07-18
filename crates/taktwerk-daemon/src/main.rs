@@ -16,6 +16,7 @@ mod handlers;
 mod logging;
 mod monitor;
 mod ravenna;
+mod routing;
 mod state;
 mod tasks;
 
@@ -60,6 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         interface: iface,
         profile: StreamProfile::level_a(channels),
         ptp_slave,
+        nmos_host: iface.to_string(),
+        nmos_port: nmos_http.port(),
     };
     let mut app_state = AppState::new(node);
 
@@ -120,7 +123,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "239.69.83.67",
             5004,
         ));
-        let nmos_app = taktwerk_router::app(nmos_node);
+        // Steuerbare Senke (unser Receiver) für IS-05-PATCH aus der Kreuzschiene.
+        let control: std::sync::Arc<dyn taktwerk_router::ReceiverControl> =
+            std::sync::Arc::new(routing::DaemonReceiverControl(app_state.clone()));
+        let nmos_app = taktwerk_router::app(nmos_node, control);
         match tokio::net::TcpListener::bind(nmos_http).await {
             Ok(l) => {
                 info!(%nmos_http, "NMOS IS-04/IS-05 aktiv unter /x-nmos/");
@@ -140,6 +146,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/devices", get(handlers::devices))
         .route("/traffic", get(handlers::traffic))
         .route("/ptp", get(handlers::ptp))
+        .route("/registry", get(routing::registry))
+        .route("/route", post(routing::route))
         .route("/streams/discovered", get(handlers::discovered))
         .route("/streams/tx", get(handlers::tx_status))
         .route("/streams/tx/start", post(handlers::tx_start))

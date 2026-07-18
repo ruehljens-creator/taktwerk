@@ -13,9 +13,12 @@
 //! Die App wird eigenständig ausgeliefert (eigener Port), sodass sie unabhängig
 //! neben der Daemon-REST-API läuft und den Audiopfad nicht berührt (§4).
 
+pub mod controller;
 pub mod ids;
 pub mod nmos;
+pub mod receiver;
 pub mod resources;
 
 pub use nmos::app;
+pub use receiver::ReceiverControl;
 pub use resources::NmosNode;
