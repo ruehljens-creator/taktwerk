@@ -89,8 +89,14 @@ pub fn bind_receiver(cfg: &MulticastConfig) -> io::Result<UdpSocket> {
 /// Bindet einen **Sende-Socket** (ephemerer Port), setzt Interface und TTL.
 /// `multicast_loop` = true lässt lokal gesendete Pakete auch lokal empfangen
 /// (nuetzlich fuer Tests und Ein-Host-Setups).
+///
+/// **Wichtig (Portabilitaet):** Der Socket bindet an `0.0.0.0`, NICHT an die
+/// Interface-IP. Auf macOS führt ein an die Interface-IP gebundener Socket sonst
+/// zu `No route to host`, wenn das OS die Multicast-Gruppe über ein *anderes*
+/// Interface routet. Die Egress-Wahl macht ausschließlich `IP_MULTICAST_IF`
+/// ([`Socket::set_multicast_if_v4`]) — das ist der korrekte, portable Weg.
 pub fn bind_sender(cfg: &MulticastConfig, multicast_loop: bool) -> io::Result<UdpSocket> {
-    let sock = base_socket(SocketAddrV4::new(cfg.interface, 0))?;
+    let sock = base_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
     sock.set_multicast_ttl_v4(cfg.ttl)?;
     sock.set_multicast_loop_v4(multicast_loop)?;
     if !cfg.interface.is_unspecified() {
