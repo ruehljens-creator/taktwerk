@@ -1163,6 +1163,7 @@ dependencies = [
 name = "taktwerk-net"
 version = "0.0.1"
 dependencies = [
+ "libc",
  "socket2 0.5.10",
  "taktwerk-core",
  "tokio",

@@ -10,9 +10,14 @@ license.workspace = true
 taktwerk-core = { path = "../taktwerk-core" }
 # tokio: async UDP. socket2: Multicast-Optionen (Join, Interface, TTL), die die
 # std-Sockets nicht direkt bieten. Beide permissiv (MIT), plattformneutral.
-tokio = { version = "1", features = ["net", "rt", "time", "sync"] }
+tokio = { version = "1", features = ["net", "rt", "time", "sync", "macros"] }
 socket2 = "0.5"
 tracing = { workspace = true }
+
+# Nur Apple: getifaddrs/if_nametoindex, um zur Interface-IP den Interface-Index
+# zu finden (IP_BOUND_IF-Bindung, siehe multicast::bind_sender). MIT/Apache.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "time"] }

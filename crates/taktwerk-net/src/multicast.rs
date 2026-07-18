@@ -93,16 +93,96 @@ pub fn bind_receiver(cfg: &MulticastConfig) -> io::Result<UdpSocket> {
 /// **Wichtig (Portabilitaet):** Der Socket bindet an `0.0.0.0`, NICHT an die
 /// Interface-IP. Auf macOS führt ein an die Interface-IP gebundener Socket sonst
 /// zu `No route to host`, wenn das OS die Multicast-Gruppe über ein *anderes*
-/// Interface routet. Die Egress-Wahl macht ausschließlich `IP_MULTICAST_IF`
-/// ([`Socket::set_multicast_if_v4`]) — das ist der korrekte, portable Weg.
+/// Interface routet. Die Egress-Wahl macht `IP_MULTICAST_IF`
+/// ([`Socket::set_multicast_if_v4`]).
+///
+/// **macOS/Apple zusätzlich:** Auf einem multi-homed Mac reicht `IP_MULTICAST_IF`
+/// nicht — macOS nutzt *scoped routing*: eine an ein Interface gebundene Route
+/// (Flag `IFSCOPE`) greift nur, wenn der Socket auch per **Interface-Index**
+/// gebunden ist (`IP_BOUND_IF`). Ohne das schlägt Multicast über ein Nicht-
+/// Default-Interface mit `No route to host (os error 65)` fehl. Wir binden den
+/// Sender daher auf Apple zusätzlich per Index (aus der Interface-IP ermittelt).
+/// Auf Linux/Windows ist dieser Block wegkompiliert.
 pub fn bind_sender(cfg: &MulticastConfig, multicast_loop: bool) -> io::Result<UdpSocket> {
     let sock = base_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
     sock.set_multicast_ttl_v4(cfg.ttl)?;
     sock.set_multicast_loop_v4(multicast_loop)?;
     if !cfg.interface.is_unspecified() {
         sock.set_multicast_if_v4(&cfg.interface)?;
+        bind_to_interface_index(&sock, cfg.interface);
     }
     into_tokio(sock)
+}
+
+/// Bindet den Socket auf Apple-Plattformen zusätzlich per **Interface-Index**
+/// (`IP_BOUND_IF`), damit macOS' scoped/IFSCOPE-Route zum Tragen kommt. Auf allen
+/// anderen Plattformen ein No-op (leere Funktion, wegoptimiert).
+#[cfg(target_vendor = "apple")]
+fn bind_to_interface_index(sock: &Socket, iface: Ipv4Addr) {
+    use std::os::unix::io::AsRawFd;
+    // IP_BOUND_IF aus <netinet/in.h> (nicht in libc als Konstante exportiert).
+    const IP_BOUND_IF: libc::c_int = 25;
+
+    let Some(idx) = ifindex_for_ipv4(iface) else {
+        tracing::warn!(%iface, "macOS: kein Interface-Index zur IP gefunden");
+        return;
+    };
+    let idx: libc::c_uint = idx;
+    // SAFETY: gültiger Socket-FD; wir übergeben einen c_uint per Zeiger + korrekte Länge.
+    let rc = unsafe {
+        libc::setsockopt(
+            sock.as_raw_fd(),
+            libc::IPPROTO_IP,
+            IP_BOUND_IF,
+            &idx as *const libc::c_uint as *const libc::c_void,
+            std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
+        )
+    };
+    if rc != 0 {
+        tracing::warn!(ifindex = idx, %iface, "IP_BOUND_IF setsockopt: {}", io::Error::last_os_error());
+    } else {
+        tracing::debug!(ifindex = idx, %iface, "macOS: Sender an Interface-Index gebunden (IP_BOUND_IF)");
+    }
+}
+
+#[cfg(not(target_vendor = "apple"))]
+#[inline]
+fn bind_to_interface_index(_sock: &Socket, _iface: Ipv4Addr) {}
+
+/// Ermittelt den Interface-Index zu einer IPv4-Adresse via `getifaddrs` +
+/// `if_nametoindex` (nur Apple; für die IP_BOUND_IF-Bindung).
+#[cfg(target_vendor = "apple")]
+fn ifindex_for_ipv4(ip: Ipv4Addr) -> Option<u32> {
+    // SAFETY: getifaddrs/freeifaddrs-Paar; wir lesen nur, folgen der ifa_next-
+    // Liste bis NULL und geben die Liste am Ende wieder frei.
+    unsafe {
+        let mut ifap: *mut libc::ifaddrs = std::ptr::null_mut();
+        if libc::getifaddrs(&mut ifap) != 0 {
+            return None;
+        }
+        let mut found = None;
+        let mut cur = ifap;
+        while !cur.is_null() {
+            let ifa = &*cur;
+            if !ifa.ifa_addr.is_null()
+                && (*ifa.ifa_addr).sa_family as i32 == libc::AF_INET
+                && !ifa.ifa_name.is_null()
+            {
+                let sin = ifa.ifa_addr as *const libc::sockaddr_in;
+                let addr = Ipv4Addr::from(u32::from_be((*sin).sin_addr.s_addr));
+                if addr == ip {
+                    let idx = libc::if_nametoindex(ifa.ifa_name);
+                    if idx != 0 {
+                        found = Some(idx);
+                        break;
+                    }
+                }
+            }
+            cur = ifa.ifa_next;
+        }
+        libc::freeifaddrs(ifap);
+        found
+    }
 }
 
 /// Verlaesst eine zuvor beigetretene Multicast-Gruppe (IGMP-Leave).
