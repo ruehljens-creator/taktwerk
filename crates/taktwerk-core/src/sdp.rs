@@ -326,4 +326,35 @@ mod tests {
         assert_eq!(parsed.multicast_addr, "239.9.9.9");
         assert_eq!(parsed.profile.encoding, Encoding::L16);
     }
+
+    /// Interop: eine realistische **fremde** AES67-SDP (Dante/Ravenna-Stil, mit
+    /// `i=`-Info- und `a=keywds`-Zeilen, `sendonly`) muss sauber geparst werden.
+    /// Diese Form liefern echte Geraete im Feld — der Parser darf an den
+    /// Zusatzzeilen nicht scheitern.
+    #[test]
+    fn parse_foreign_dante_style_sdp() {
+        let sdp = "v=0\r\n\
+                   o=- 3745510801 3745510801 IN IP4 169.254.10.20\r\n\
+                   s=AOIP44-serial-1234 : 2\r\n\
+                   i=2 channels: TxL, TxR\r\n\
+                   c=IN IP4 239.65.10.20/32\r\n\
+                   t=0 0\r\n\
+                   a=keywds:Dante\r\n\
+                   m=audio 5004 RTP/AVP 97\r\n\
+                   c=IN IP4 239.65.10.20/32\r\n\
+                   a=rtpmap:97 L24/48000/2\r\n\
+                   a=sendonly\r\n\
+                   a=mediaclk:direct=0\r\n\
+                   a=ptime:1\r\n\
+                   a=ts-refclk:ptp=IEEE1588-2008:00-1D-C1-FF-FE-AB-CD-EF:0\r\n";
+        let parsed = AudioSession::parse(sdp).expect("fremde SDP muss parsen");
+        assert_eq!(parsed.multicast_addr, "239.65.10.20");
+        assert_eq!(parsed.port, 5004);
+        assert_eq!(parsed.payload_type, 97);
+        assert_eq!(parsed.profile, StreamProfile::level_a(2));
+        assert_eq!(parsed.origin_unicast, "169.254.10.20");
+        let rc = parsed.refclk.expect("ts-refclk vorhanden");
+        assert_eq!(rc.gmid, "00-1D-C1-FF-FE-AB-CD-EF");
+        assert_eq!(rc.domain, 0);
+    }
 }
