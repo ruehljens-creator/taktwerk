@@ -454,6 +454,7 @@ dependencies = [
  "taktwerk-core",
  "taktwerk-endpoint",
  "taktwerk-net",
+ "taktwerk-router",
  "tokio",
 ]
 
@@ -472,6 +473,17 @@ name = "taktwerk-net"
 version = "0.0.1"
 dependencies = [
  "socket2 0.5.10",
+ "taktwerk-core",
+ "tokio",
+]
+
+[[package]]
+name = "taktwerk-router"
+version = "0.0.1"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
  "taktwerk-core",
  "tokio",
 ]

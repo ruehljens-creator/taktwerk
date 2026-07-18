@@ -38,6 +38,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2);
+    let nmos_http: SocketAddr = std::env::var("TAKTWERK_NMOS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 7789)));
 
     let node = NodeInfo {
         name: name.clone(),
@@ -48,6 +52,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // SAP-Discovery im Hintergrund starten.
     tokio::spawn(tasks::discovery_task(iface, app_state.clone()));
+
+    // NMOS-Control-Plane (IS-04/IS-05) als eigener Server (berührt den Audiopfad nicht).
+    {
+        let nmos_node = std::sync::Arc::new(taktwerk_router::NmosNode::new(
+            name.clone(),
+            iface.to_string(),
+            nmos_http.port(),
+            iface.to_string(),
+            StreamProfile::level_a(channels),
+            "239.69.83.67",
+            5004,
+        ));
+        let nmos_app = taktwerk_router::app(nmos_node);
+        match tokio::net::TcpListener::bind(nmos_http).await {
+            Ok(l) => {
+                println!("NMOS IS-04/IS-05 auf http://{nmos_http}/x-nmos/");
+                tokio::spawn(async move {
+                    let _ = axum::serve(l, nmos_app).await;
+                });
+            }
+            Err(e) => eprintln!("NMOS-Server konnte nicht binden ({nmos_http}): {e}"),
+        }
+    }
 
     let app = Router::new()
         .route("/health", get(handlers::health))
