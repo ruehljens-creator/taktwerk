@@ -110,6 +110,8 @@ pub struct SapEvent {
     pub source: [u8; 4],
     /// Absenderadresse des Datagramms.
     pub from: SocketAddr,
+    /// Größe des UDP-Datagramms in Bytes (für Traffic-Zählung).
+    pub bytes: usize,
     /// Geparste Session (None, wenn der SDP-Payload nicht lesbar war).
     pub session: Option<AudioSession>,
 }
@@ -143,6 +145,7 @@ impl SapListener {
             msg_id_hash: pkt.msg_id_hash,
             source: pkt.source,
             from,
+            bytes: n,
             session,
         })
     }

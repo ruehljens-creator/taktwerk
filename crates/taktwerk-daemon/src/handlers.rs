@@ -3,10 +3,13 @@
 //! Endpunkte:
 //! - `GET  /health`               — Lebenszeichen
 //! - `GET  /node`                 — Knoten-Konfiguration (Name, Interface, Profil)
+//! - `GET  /devices`              — alle gesehenen Geräte (IP, Name, Traffic)
+//! - `GET  /traffic`              — Netzwerk-Traffic je Protokoll + Summe
 //! - `GET  /streams/discovered`   — per SAP entdeckte fremde Streams
 //! - `GET  /streams/tx`           — Status des Sende-Stroms
-//! - `POST /streams/tx/start`     — Sende-Strom starten (+ SAP-Announce)
-//! - `POST /streams/tx/stop`      — Sende-Strom stoppen
+//! - `POST /streams/tx/{start,stop}` — Sende-Strom steuern (+ SAP-Announce)
+//! - `GET  /streams/rx`           — Status des Empfangs-Abonnements
+//! - `POST /streams/rx/{subscribe,unsubscribe}` — Empfang steuern
 
 use std::net::Ipv4Addr;
 use std::sync::atomic::Ordering;
@@ -115,6 +118,16 @@ pub async fn node(State(state): State<AppState>) -> Json<NodeDto> {
         interface: state.node.interface.to_string(),
         profile: state.node.profile.into(),
     })
+}
+
+/// Alle im Netz gesehenen Geräte (IP, Name, Traffic je Protokoll).
+pub async fn devices(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(state.monitor.lock().unwrap().devices_json())
+}
+
+/// Gesamter Netzwerk-Traffic (pro Protokoll + Summe, mit 1-s-Raten).
+pub async fn traffic(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(state.monitor.lock().unwrap().traffic_json())
 }
 
 pub async fn discovered(State(state): State<AppState>) -> Json<Vec<DiscoveredDto>> {
@@ -241,8 +254,14 @@ pub async fn rx_subscribe(
     }
 
     let profile = StreamProfile::level_a(channels);
-    let (shutdown, packets, handle) = start_rx(state.node.interface, group, port, profile)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (shutdown, packets, handle) = start_rx(
+        state.node.interface,
+        group,
+        port,
+        profile,
+        state.monitor.clone(),
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     rx.running = true;
     rx.source = Some(format!("{group}:{port}"));

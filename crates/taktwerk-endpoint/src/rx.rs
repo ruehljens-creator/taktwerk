@@ -1,14 +1,19 @@
 //! RxStream — RTP-Recv → Playback.
 
 use std::io;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use taktwerk_audio::AudioBackend;
 use taktwerk_net::RtpReceiver;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 use crate::audio_err;
+
+/// Ein Traffic-Ereignis (Absender, Datagramm-Größe) — vom RX-Strom optional an
+/// einen Beobachter (z. B. den Traffic-Monitor des Daemons) gemeldet.
+pub type TrafficEvent = (SocketAddr, usize);
 
 /// Empfangs-Strom: nimmt RTP-Pakete entgegen und schreibt die dekodierten
 /// Samples ins Audio-Backend (Netz → Playback). Der Paketzähler ist ein
@@ -18,6 +23,8 @@ pub struct RxStream {
     receiver: RtpReceiver,
     backend: Box<dyn AudioBackend>,
     packets_recv: Arc<AtomicU64>,
+    /// Optionaler Traffic-Beobachter (entkoppelt: kennt keine Daemon-Typen).
+    traffic: Option<mpsc::UnboundedSender<TrafficEvent>>,
 }
 
 impl RxStream {
@@ -26,7 +33,14 @@ impl RxStream {
             receiver,
             backend,
             packets_recv: Arc::new(AtomicU64::new(0)),
+            traffic: None,
         }
+    }
+
+    /// Meldet jedes empfangene Paket als (Quelle, Bytes) an `sender`.
+    pub fn with_traffic(mut self, sender: mpsc::UnboundedSender<TrafficEvent>) -> Self {
+        self.traffic = Some(sender);
+        self
     }
 
     /// Anzahl bisher empfangener/gespielter Pakete.
@@ -45,6 +59,9 @@ impl RxStream {
         self.backend
             .write_playback(&pkt.samples)
             .map_err(audio_err)?;
+        if let Some(tx) = &self.traffic {
+            let _ = tx.send((pkt.from, pkt.bytes));
+        }
         let n = self.packets_recv.fetch_add(1, Ordering::Relaxed) + 1;
         tracing::trace!(seq = pkt.header.sequence, packets = n, "RX pump");
         Ok(())
@@ -57,6 +74,9 @@ impl RxStream {
                 pkt = self.receiver.recv() => {
                     let pkt = pkt?;
                     self.backend.write_playback(&pkt.samples).map_err(audio_err)?;
+                    if let Some(tx) = &self.traffic {
+                        let _ = tx.send((pkt.from, pkt.bytes));
+                    }
                     let n = self.packets_recv.fetch_add(1, Ordering::Relaxed) + 1;
                     tracing::trace!(seq = pkt.header.sequence, packets = n, "RX pump");
                 }

@@ -19,6 +19,8 @@ pub struct ReceivedPacket {
     pub header: RtpHeader,
     /// Absenderadresse (Quelle) des Datagramms.
     pub from: SocketAddr,
+    /// Größe des UDP-Datagramms in Bytes (für Traffic-Zählung).
+    pub bytes: usize,
     /// Interleavte i32-Samples (linksbuendig, vgl. `rtp::decode_payload`).
     pub samples: Vec<i32>,
 }
@@ -74,6 +76,7 @@ impl RtpReceiver {
         Ok(ReceivedPacket {
             header,
             from,
+            bytes: n,
             samples,
         })
     }

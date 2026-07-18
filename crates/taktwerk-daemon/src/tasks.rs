@@ -12,13 +12,28 @@ use taktwerk_core::StreamProfile;
 use taktwerk_endpoint::{RxStream, TxStream};
 use taktwerk_net::{
     bind_receiver, bind_sap_announcer, bind_sap_listener, bind_sender, MulticastConfig,
-    RtpReceiver, SapAnnouncer, SapListener,
+    PtpListener, RtpReceiver, SapAnnouncer, SapListener,
 };
 use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
 use tracing::{debug, error, info, warn};
 
+use crate::monitor::{Proto, TrafficMonitor};
 use crate::state::{now_unix, AppState, DiscoveredEntry};
+
+/// IPv4 aus einer Socket-Adresse (nur IPv4-Traffic wird verbucht).
+fn ipv4(addr: SocketAddr) -> Option<Ipv4Addr> {
+    match addr {
+        SocketAddr::V4(v4) => Some(*v4.ip()),
+        SocketAddr::V6(_) => None,
+    }
+}
+
+/// Formatiert eine PTP-Clock-Identity als lesbaren Gerätenamen.
+fn ptp_name(id: [u8; 8]) -> String {
+    let hex: Vec<String> = id.iter().map(|b| format!("{b:02x}")).collect();
+    format!("PTP {}", hex.join(":"))
+}
 
 /// Lauscht dauerhaft auf SAP-Announcements und pflegt die Discovery-Tabelle.
 pub async fn discovery_task(iface: Ipv4Addr, state: AppState) {
@@ -34,6 +49,15 @@ pub async fn discovery_task(iface: Ipv4Addr, state: AppState) {
     loop {
         match listener.recv().await {
             Ok(ev) => {
+                // Traffic verbuchen (SAP), Name aus der Session, wenn vorhanden.
+                if let Some(ip) = ipv4(ev.from) {
+                    let name = ev.session.as_ref().map(|s| s.session_name.clone());
+                    state
+                        .monitor
+                        .lock()
+                        .unwrap()
+                        .record(Proto::Sap, ip, ev.bytes, name);
+                }
                 let mut map = state.discovered.lock().unwrap();
                 if ev.announce {
                     if let Some(s) = ev.session {
@@ -185,12 +209,14 @@ pub fn start_tx(
 }
 
 /// Startet ein RX-Abonnement: tritt der Multicast-Gruppe bei und empfängt den
-/// Stream in ein (headless) Backend. Gibt (Shutdown, Live-Zähler, Handle) zurück.
+/// Stream in ein (headless) Backend. Empfangene Pakete werden zusätzlich als
+/// RTP-Traffic im Monitor verbucht. Gibt (Shutdown, Live-Zähler, Handle) zurück.
 pub fn start_rx(
     iface: Ipv4Addr,
     group: Ipv4Addr,
     port: u16,
     profile: StreamProfile,
+    monitor: Arc<std::sync::Mutex<TrafficMonitor>>,
 ) -> std::io::Result<(
     watch::Sender<bool>,
     Arc<AtomicU64>,
@@ -199,7 +225,19 @@ pub fn start_rx(
     let mcfg = MulticastConfig::new(group, port).with_interface(iface);
     let sock = bind_receiver(&mcfg)?;
     let receiver = RtpReceiver::new(sock, profile);
-    let rx = RxStream::new(receiver, Box::new(NullBackend::new(profile)));
+
+    // Traffic-Kanal: RxStream meldet (Quelle, Bytes) je Paket; ein Drain-Task
+    // verbucht sie in den Monitor. Endet automatisch, wenn RxStream droppt.
+    let (traffic_tx, mut traffic_rx) = tokio::sync::mpsc::unbounded_channel();
+    let rx = RxStream::new(receiver, Box::new(NullBackend::new(profile))).with_traffic(traffic_tx);
+    let mon = monitor.clone();
+    tokio::spawn(async move {
+        while let Some((from, bytes)) = traffic_rx.recv().await {
+            if let Some(ip) = ipv4(from) {
+                mon.lock().unwrap().record(Proto::Rtp, ip, bytes, None);
+            }
+        }
+    });
 
     let packets = rx.packet_counter();
     let counter = packets.clone();
@@ -215,4 +253,42 @@ pub fn start_rx(
         );
     });
     Ok((shutdown_tx, packets, handle))
+}
+
+/// Lauscht dauerhaft auf PTP-Multicast und verbucht jede Nachricht als
+/// PTP-Traffic (Gerätename aus der Clock-Identity des Absenders).
+pub async fn ptp_monitor_task(iface: Ipv4Addr, state: AppState) {
+    let mut listener = match PtpListener::bind(iface) {
+        Ok(l) => l,
+        Err(e) => {
+            warn!(%iface, "PTP-Listener-Bind fehlgeschlagen: {e} (kein PTP-Monitor)");
+            return;
+        }
+    };
+    info!(%iface, "PTP-Monitor aktiv (224.0.1.129:319/320)");
+    loop {
+        match listener.recv().await {
+            Ok((msg, from, bytes)) => {
+                if let Some(ip) = ipv4(from) {
+                    let name = ptp_name(msg.source_identity());
+                    state
+                        .monitor
+                        .lock()
+                        .unwrap()
+                        .record(Proto::Ptp, ip, bytes, Some(name));
+                }
+            }
+            Err(e) => warn!("PTP-recv-Fehler: {e}"),
+        }
+    }
+}
+
+/// Aktualisiert im Sekundentakt die Traffic-Raten (pps/bps) des Monitors.
+pub async fn rate_task(state: AppState) {
+    let mut tick = interval(Duration::from_secs(1));
+    tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    loop {
+        tick.tick().await;
+        state.monitor.lock().unwrap().tick();
+    }
 }

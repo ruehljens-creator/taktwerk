@@ -12,6 +12,7 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 
 use taktwerk_core::ptp::wire::{Announce, MessageType, PtpHeader, TimestampedMsg};
+use taktwerk_core::ptp::ClockIdentity;
 use tokio::net::UdpSocket;
 
 use crate::multicast::{bind_receiver, MulticastConfig};
@@ -58,6 +59,15 @@ impl PtpMessage {
             PtpMessage::Other(_) => "Other",
         }
     }
+
+    /// Clock-Identity des Absenders (aus dem Header).
+    pub fn source_identity(&self) -> ClockIdentity {
+        match self {
+            PtpMessage::Announce(a) => a.header.source_port.clock_identity,
+            PtpMessage::Sync(m) | PtpMessage::FollowUp(m) => m.header.source_port.clock_identity,
+            PtpMessage::Other(h) => h.source_port.clock_identity,
+        }
+    }
 }
 
 /// Empfängt PTP-Nachrichten von beiden Ports (319 Event, 320 General).
@@ -87,8 +97,8 @@ impl PtpListener {
     }
 
     /// Wartet auf die nächste (parsebare) PTP-Nachricht von einem der Ports.
-    /// Absender wird mit zurückgegeben.
-    pub async fn recv(&mut self) -> io::Result<(PtpMessage, SocketAddr)> {
+    /// Gibt Nachricht, Absender und Datagramm-Größe (Bytes) zurück.
+    pub async fn recv(&mut self) -> io::Result<(PtpMessage, SocketAddr, usize)> {
         loop {
             let (datagram, from) = tokio::select! {
                 r = self.event.recv_from(&mut self.buf_event) => {
@@ -100,10 +110,11 @@ impl PtpListener {
                     (&self.buf_general[..n], from)
                 }
             };
+            let n = datagram.len();
             match classify(datagram) {
                 Some(msg) => {
-                    tracing::debug!(%from, kind = msg.kind(), "PTP-Nachricht empfangen");
-                    return Ok((msg, from));
+                    tracing::debug!(%from, kind = msg.kind(), bytes = n, "PTP-Nachricht empfangen");
+                    return Ok((msg, from, n));
                 }
                 None => continue, // unparsebar / uninteressant → weiterhören
             }

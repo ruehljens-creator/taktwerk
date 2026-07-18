@@ -109,9 +109,30 @@
   </section>
 
   <section class="panel wide">
+    <h2>Netzwerk-Traffic</h2>
+    <table>
+      <thead><tr><th>Protokoll</th><th>Pakete</th><th>Daten</th><th>Rate (pps)</th><th>Rate (Daten/s)</th></tr></thead>
+      <tbody id="traffic-body"></tbody>
+      <tfoot><tr id="traffic-total" style="font-weight:600">
+        <td>Gesamt</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tfoot>
+    </table>
+    <div class="muted" style="margin-top:8px">Gezählt wird der vom Knoten gesehene
+      SAP-/PTP-Control-Traffic und RTP abonnierter Streams (kein Sniffer).</div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Geräte im Netz</h2>
+    <div id="dev-empty" class="muted">Noch keine Geräte gesehen.</div>
+    <table id="dev-table" style="display:none">
+      <thead><tr><th>IP</th><th>Name</th><th>Protokolle</th><th>Pakete</th><th>Daten</th><th>Rate</th><th>zuletzt</th></tr></thead>
+      <tbody id="dev-body"></tbody>
+    </table>
+  </section>
+
+  <section class="panel wide">
     <h2>APIs</h2>
-    <div class="muted">REST: diese Oberfläche · NMOS IS-04/IS-05 auf eigenem Port
-      (<span id="nmos-hint">…/x-nmos/</span>).</div>
+    <div class="muted">REST: diese Oberfläche (<code>/devices</code>, <code>/traffic</code>, …) ·
+      NMOS IS-04/IS-05 auf eigenem Port unter <code>/x-nmos/</code>.</div>
   </section>
 </main>
 
@@ -125,12 +146,51 @@ async function jpost(u, body) {
   return r.json();
 }
 function setStatus(el, on, txt) { el.classList.toggle("on", on); el.querySelector("span:last-child").textContent = txt; }
+function fmtBytes(b) {
+  if (b < 1024) return b + " B";
+  const u = ["KB", "MB", "GB", "TB"]; let i = -1; do { b /= 1024; i++; } while (b >= 1024 && i < u.length - 1);
+  return b.toFixed(b < 10 ? 1 : 0) + " " + u[i];
+}
+function fmtNum(n) { return (n || 0).toLocaleString("de"); }
+function fmtAge(s) { return s < 2 ? "jetzt" : s < 60 ? s + " s" : Math.floor(s / 60) + " min"; }
+const PROTO_LABEL = { sap: "SAP", ptp: "PTP", rtp: "RTP" };
+
+function renderTraffic(t) {
+  const body = $("traffic-body"); body.innerHTML = "";
+  for (const p of ["sap", "ptp", "rtp"]) {
+    const s = (t.by_proto && t.by_proto[p]) || { packets: 0, bytes: 0, pps: 0, bps: 0 };
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${PROTO_LABEL[p]}</td><td>${fmtNum(s.packets)}</td><td>${fmtBytes(s.bytes)}</td><td>${fmtNum(s.pps)}</td><td>${fmtBytes(s.bps)}/s</td>`;
+    body.appendChild(tr);
+  }
+  const tot = t.total || { packets: 0, bytes: 0, pps: 0, bps: 0 };
+  $("traffic-total").innerHTML =
+    `<td>Gesamt (${t.device_count || 0} Geräte)</td><td>${fmtNum(tot.packets)}</td><td>${fmtBytes(tot.bytes)}</td><td>${fmtNum(tot.pps)}</td><td>${fmtBytes(tot.bps)}/s</td>`;
+}
+
+function renderDevices(devs) {
+  const body = $("dev-body"); body.innerHTML = "";
+  if (!devs.length) { $("dev-empty").style.display = ""; $("dev-table").style.display = "none"; return; }
+  $("dev-empty").style.display = "none"; $("dev-table").style.display = "";
+  devs.sort((a, b) => b.bytes - a.bytes);
+  for (const d of devs) {
+    const protos = (d.protocols || []).map(p => PROTO_LABEL[p] || p).join(", ");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${d.ip}</td><td>${d.name || '<span class="muted">—</span>'}</td>` +
+      `<td>${protos}</td><td>${fmtNum(d.packets)}</td><td>${fmtBytes(d.bytes)}</td>` +
+      `<td>${fmtNum(d.pps)} pps · ${fmtBytes(d.bps)}/s</td><td>${fmtAge(d.age_s)}</td>`;
+    body.appendChild(tr);
+  }
+}
 
 async function refresh() {
   try {
-    const [node, tx, rx, disc] = await Promise.all([
+    const [node, tx, rx, disc, devs, traffic] = await Promise.all([
       jget("/node"), jget("/streams/tx"), jget("/streams/rx"), jget("/streams/discovered"),
+      jget("/devices"), jget("/traffic"),
     ]);
+    renderTraffic(traffic);
+    renderDevices(devs);
     $("livedot").classList.add("live");
     $("n-name").textContent = node.name;
     $("subtitle").textContent = "AES67 Node · " + node.name;

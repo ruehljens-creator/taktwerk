@@ -66,8 +66,14 @@ linuxptp `ptp4l`. Geplant: React-Ausbau der UI · Audiogeräte-Backends (Phase 1
 ## Web-UI
 
 Der Daemon liefert unter `http://<TAKTWERK_HTTP>/` eine Bedien-Oberfläche
-(Knoten-Status, TX/RX-Steuerung mit Live-Zählern, SAP-Discovery). Die
-NMOS-APIs liegen auf `TAKTWERK_NMOS` (Default `127.0.0.1:7789`) unter `/x-nmos/`.
+(Knoten-Status, TX/RX-Steuerung mit Live-Zählern, SAP-Discovery, **Geräte-Übersicht
+und Netzwerk-Traffic**). Die NMOS-APIs liegen auf `TAKTWERK_NMOS`
+(Default `127.0.0.1:7789`) unter `/x-nmos/`.
+
+**Geräte & Traffic** (`GET /devices`, `GET /traffic`): pro Absender-IP ein Gerät
+mit bestem bekannten Namen (SAP-Session / PTP-Clock-ID) und Traffic je Protokoll
+(Pakete, Bytes, pps/bps). **Kein Sniffer** — gezählt wird nur der SAP-/PTP-
+Control-Traffic und RTP der abonnierten Streams, die der Knoten ohnehin sieht.
 
 ## Debug-Log
 

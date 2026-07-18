@@ -44,7 +44,7 @@ async fn run() -> std::io::Result<()> {
         tokio::select! {
             _ = &mut deadline => break,
             res = listener.recv() => {
-                let (msg, from) = res?;
+                let (msg, from, _bytes) = res?;
                 match msg {
                     PtpMessage::Announce(a) => {
                         announces += 1;

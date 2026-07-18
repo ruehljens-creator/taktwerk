@@ -14,6 +14,7 @@
 
 mod handlers;
 mod logging;
+mod monitor;
 mod state;
 mod tasks;
 
@@ -57,8 +58,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let app_state = AppState::new(node);
 
-    // SAP-Discovery im Hintergrund starten.
+    // Hintergrund-Tasks: SAP-Discovery, PTP-Monitor, Traffic-Raten-Ticker.
     tokio::spawn(tasks::discovery_task(iface, app_state.clone()));
+    tokio::spawn(tasks::ptp_monitor_task(iface, app_state.clone()));
+    tokio::spawn(tasks::rate_task(app_state.clone()));
 
     // NMOS-Control-Plane (IS-04/IS-05) als eigener Server (berührt den Audiopfad nicht).
     {
@@ -88,6 +91,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/ui", get(handlers::ui))
         .route("/health", get(handlers::health))
         .route("/node", get(handlers::node))
+        .route("/devices", get(handlers::devices))
+        .route("/traffic", get(handlers::traffic))
         .route("/streams/discovered", get(handlers::discovered))
         .route("/streams/tx", get(handlers::tx_status))
         .route("/streams/tx/start", post(handlers::tx_start))

@@ -10,6 +10,8 @@ use taktwerk_core::StreamProfile;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
+use crate::monitor::TrafficMonitor;
+
 /// Statische Knoten-Konfiguration (Anzeigename + Netz-Interface).
 #[derive(Debug, Clone)]
 pub struct NodeInfo {
@@ -60,6 +62,8 @@ pub struct AppState {
     pub discovered: Arc<Mutex<HashMap<u16, DiscoveredEntry>>>,
     pub tx: Arc<Mutex<TxControl>>,
     pub rx: Arc<Mutex<RxControl>>,
+    /// Geräte- und Traffic-Monitor (SAP/PTP/RTP-Aggregation).
+    pub monitor: Arc<Mutex<TrafficMonitor>>,
 }
 
 impl AppState {
@@ -69,6 +73,7 @@ impl AppState {
             discovered: Arc::new(Mutex::new(HashMap::new())),
             tx: Arc::new(Mutex::new(TxControl::default())),
             rx: Arc::new(Mutex::new(RxControl::default())),
+            monitor: Arc::new(Mutex::new(TrafficMonitor::default())),
         }
     }
 }
