@@ -38,7 +38,7 @@ portablen Kern + Router mit (virtuelles Gerät später). Das Leitprinzip:
 |---|:---:|:---:|:---:|---|
 | RTP L24/L16, SDP, SAP, PTP-BMCA, ASRC-Servo | ✅ | ✅ | ✅ | `taktwerk-core` (rein) |
 | Sockets / Multicast / IGMP | ✅ | ✅ | ✅ | `taktwerk-net` *(geplant)* |
-| Virtuelle Soundkarte | PipeWire / snd-aloop | BlackHole (Core Audio) | — *(später)* | `taktwerk-audio` (Trait) |
+| Virtuelle Soundkarte | ✅ ALSA `snd-aloop` | Pro Tools Bridge / BlackHole | — *(später)* | `taktwerk-audio` (cpal) |
 | mDNS-Discovery | Avahi / pure-Rust | Bonjour nativ | pure-Rust | `taktwerk-discovery` *(geplant)* |
 | PTP-Timestamping | SW + `SO_TIMESTAMPING` | nur SW | nur SW | `taktwerk-ptp` (Trait) |
 | Router (NMOS/SAP), Web-UI | ✅ | ✅ | ✅ | `taktwerk-router` / UI *(geplant)* |
@@ -133,9 +133,31 @@ cargo run -p taktwerk-audio --features cpal-backend --example audio_devices -- \
   "Pro Tools Audio Bridge 2" "Pro Tools Audio Bridge 2"
 ```
 
-*(Linux braucht `libasound2-dev` zum Bauen des Features.)* Die **virtuelle
-Soundkarte** (BlackHole/PipeWire, damit Pro Tools ein AES67-Gerät sieht) ist der
-nächste Audio-Baustein.
+*(Linux braucht `libasound2-dev` + `pkg-config` zum Bauen des Features.)*
+
+## Virtuelle Soundkarte
+
+Damit eine DAW/App den Node als **System-Audiogerät** sieht (was reingespielt
+wird → AES67, empfangenes AES67 → aufnehmbar), nutzt Taktwerk ein virtuelles
+Gerät und öffnet es über die cpal-Geräteauswahl per Name:
+
+- **Linux (headless):** ALSA-Kernel-Loopback **`snd-aloop`** — kein PipeWire/
+  PulseAudio nötig. Einrichten: `sudo deploy/linux-snd-aloop.sh` (lädt das Modul
+  persistent + installiert `libasound2-dev`/`pkg-config`). Dann:
+  ```bash
+  TAKTWERK_AUDIO=cpal TAKTWERK_AUDIO_IN=Loopback  taktwerkd   # App → AES67 (TX)
+  TAKTWERK_AUDIO=cpal TAKTWERK_AUDIO_OUT=Loopback taktwerkd   # AES67 → App (RX)
+  ```
+  Selbsttest (Ton fließt durch das virtuelle Gerät in den Aufnahmepfad):
+  ```bash
+  cargo run -p taktwerk-audio --features cpal-backend --example loopback_flow \
+    -- Loopback,DEV=1 Loopback,DEV=0
+  ```
+- **macOS:** ein vorhandenes virtuelles Gerät per Name wählen — z. B.
+  **„Pro Tools Audio Bridge"** oder BlackHole (`TAKTWERK_AUDIO_IN="Pro Tools Audio Bridge 64"`).
+
+Beide Enden laufen AES67-konform mit **48 kHz** (snd-aloop verlangt gleiche
+Rate/Kanalzahl an beiden Kabelenden).
 
 ## Node starten (headless, Phase 0)
 

@@ -25,9 +25,17 @@ cpal-backend = ["dep:cpal"]
 macos-blackhole = []
 linux-pipewire = []
 
-# Das Geraete-Beispiel braucht das cpal-Feature (sonst nicht bauen).
+# Die cpal-Beispiele brauchen das cpal-Feature (sonst nicht bauen).
 [[example]]
 name = "audio_devices"
+required-features = ["cpal-backend"]
+
+[[example]]
+name = "tone"
+required-features = ["cpal-backend"]
+
+[[example]]
+name = "loopback_flow"
 required-features = ["cpal-backend"]
 
 [lints]
