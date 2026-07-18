@@ -12,6 +12,7 @@ taktwerk-core = { path = "../taktwerk-core" }
 # std-Sockets nicht direkt bieten. Beide permissiv (MIT), plattformneutral.
 tokio = { version = "1", features = ["net", "rt", "time", "sync"] }
 socket2 = "0.5"
+tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "time"] }

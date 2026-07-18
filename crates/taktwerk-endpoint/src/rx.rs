@@ -45,7 +45,8 @@ impl RxStream {
         self.backend
             .write_playback(&pkt.samples)
             .map_err(audio_err)?;
-        self.packets_recv.fetch_add(1, Ordering::Relaxed);
+        let n = self.packets_recv.fetch_add(1, Ordering::Relaxed) + 1;
+        tracing::trace!(seq = pkt.header.sequence, packets = n, "RX pump");
         Ok(())
     }
 
@@ -56,7 +57,8 @@ impl RxStream {
                 pkt = self.receiver.recv() => {
                     let pkt = pkt?;
                     self.backend.write_playback(&pkt.samples).map_err(audio_err)?;
-                    self.packets_recv.fetch_add(1, Ordering::Relaxed);
+                    let n = self.packets_recv.fetch_add(1, Ordering::Relaxed) + 1;
+                    tracing::trace!(seq = pkt.header.sequence, packets = n, "RX pump");
                 }
                 res = shutdown.changed() => {
                     if res.is_err() || *shutdown.borrow() {

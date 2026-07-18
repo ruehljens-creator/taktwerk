@@ -105,6 +105,12 @@ impl RtpSender {
         self.socket
             .send_to(&self.packet[..total], self.dest)
             .await?;
+        tracing::trace!(
+            seq = self.sequence,
+            ts = self.timestamp,
+            bytes = total,
+            "RTP gesendet"
+        );
 
         // Zustand fortschreiben: Sequence +1 (wrap), Timestamp += Frames/Paket.
         self.sequence = self.sequence.wrapping_add(1);

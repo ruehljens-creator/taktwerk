@@ -16,6 +16,7 @@ use taktwerk_net::{
 };
 use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
+use tracing::{debug, error, info, warn};
 
 use crate::state::{now_unix, AppState, DiscoveredEntry};
 
@@ -24,18 +25,25 @@ pub async fn discovery_task(iface: Ipv4Addr, state: AppState) {
     let sock = match bind_sap_listener(iface) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[discovery] SAP-Listener-Bind fehlgeschlagen: {e}");
+            error!(%iface, "SAP-Listener-Bind fehlgeschlagen: {e}");
             return;
         }
     };
     let mut listener = SapListener::new(sock);
-    println!("[discovery] SAP-Listener aktiv auf Interface {iface}");
+    info!(%iface, "SAP-Discovery aktiv");
     loop {
         match listener.recv().await {
             Ok(ev) => {
                 let mut map = state.discovered.lock().unwrap();
                 if ev.announce {
                     if let Some(s) = ev.session {
+                        debug!(
+                            hash = ev.msg_id_hash,
+                            name = %s.session_name,
+                            group = %s.multicast_addr,
+                            port = s.port,
+                            "SAP-Announce entdeckt"
+                        );
                         map.insert(
                             ev.msg_id_hash,
                             DiscoveredEntry {
@@ -50,10 +58,11 @@ pub async fn discovery_task(iface: Ipv4Addr, state: AppState) {
                         );
                     }
                 } else {
+                    debug!(hash = ev.msg_id_hash, "SAP-Deletion");
                     map.remove(&ev.msg_id_hash);
                 }
             }
-            Err(e) => eprintln!("[discovery] recv-Fehler: {e}"),
+            Err(e) => warn!("SAP-recv-Fehler: {e}"),
         }
     }
 }
@@ -127,6 +136,7 @@ pub fn start_tx(
     let packets_task = packets.clone();
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 
+    info!(%dest, ch = profile.channels, ssrc = format!("{ssrc:#x}"), "TX-Stream gestartet");
     let handle = tokio::spawn(async move {
         let mut media_tick = interval(Duration::from_micros(profile.ptime_us as u64));
         media_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -135,21 +145,28 @@ pub fn start_tx(
 
         // Erstes Announcement sofort.
         if let Err(e) = announcer.announce().await {
-            eprintln!("[tx] SAP-Announce-Fehler: {e}");
+            warn!("SAP-Announce-Fehler: {e}");
+        } else {
+            debug!(%dest, "SAP-Announce gesendet");
         }
 
         loop {
             tokio::select! {
                 _ = media_tick.tick() => {
                     if let Err(e) = tx.pump_once().await {
-                        eprintln!("[tx] Sende-Fehler: {e}");
+                        error!("TX-Sende-Fehler: {e}");
                         break;
                     }
-                    packets_task.store(tx.packets_sent(), Ordering::Relaxed);
+                    let n = tx.packets_sent();
+                    packets_task.store(n, Ordering::Relaxed);
+                    if n % 1000 == 0 {
+                        debug!(packets = n, "TX läuft");
+                    }
                 }
                 _ = sap_tick.tick() => {
-                    if let Err(e) = announcer.announce().await {
-                        eprintln!("[tx] SAP-Announce-Fehler: {e}");
+                    match announcer.announce().await {
+                        Ok(()) => debug!("SAP-Announce (periodisch)"),
+                        Err(e) => warn!("SAP-Announce-Fehler: {e}"),
                     }
                 }
                 res = shutdown_rx.changed() => {
@@ -161,7 +178,7 @@ pub fn start_tx(
         }
         // Beim Stoppen die Session zurückziehen.
         let _ = announcer.delete().await;
-        println!("[tx] gestoppt nach {} Paketen", tx.packets_sent());
+        info!(packets = tx.packets_sent(), "TX-Stream gestoppt");
     });
 
     Ok((shutdown_tx, packets, handle))
@@ -185,12 +202,17 @@ pub fn start_rx(
     let rx = RxStream::new(receiver, Box::new(NullBackend::new(profile)));
 
     let packets = rx.packet_counter();
+    let counter = packets.clone();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    info!(%group, port, ch = profile.channels, "RX-Abonnement gestartet");
     let handle = tokio::spawn(async move {
         if let Err(e) = rx.run(shutdown_rx).await {
-            eprintln!("[rx] Empfangs-Fehler: {e}");
+            error!("RX-Empfangs-Fehler: {e}");
         }
-        println!("[rx] Abonnement beendet");
+        info!(
+            packets = counter.load(Ordering::Relaxed),
+            "RX-Abonnement beendet"
+        );
     });
     Ok((shutdown_tx, packets, handle))
 }

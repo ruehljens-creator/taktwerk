@@ -58,6 +58,7 @@ impl TxStream {
             .map_err(audio_err)?;
         self.sender.send_block(&block).await?;
         self.packets_sent += 1;
+        tracing::trace!(packets = self.packets_sent, "TX pump");
         Ok(())
     }
 

@@ -79,6 +79,12 @@ impl SapAnnouncer {
         };
         let bytes = pkt.to_bytes();
         self.socket.send_to(&bytes, self.dest).await?;
+        tracing::debug!(
+            hash = self.msg_id_hash,
+            announce,
+            bytes = bytes.len(),
+            "SAP gesendet"
+        );
         Ok(())
     }
 

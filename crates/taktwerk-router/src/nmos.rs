@@ -215,6 +215,7 @@ async fn is05_transportfile(State(n): State<Node>, Path(id): Path<String>) -> im
     if id != n.sender_id {
         return not_found();
     }
+    tracing::debug!(sender = %id, "NMOS transportfile (SDP) abgerufen");
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "application/sdp")],

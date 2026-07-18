@@ -69,6 +69,18 @@ Der Daemon liefert unter `http://<TAKTWERK_HTTP>/` eine Bedien-Oberfläche
 (Knoten-Status, TX/RX-Steuerung mit Live-Zählern, SAP-Discovery). Die
 NMOS-APIs liegen auf `TAKTWERK_NMOS` (Default `127.0.0.1:7789`) unter `/x-nmos/`.
 
+## Debug-Log
+
+Der Daemon loggt strukturiert nach **stderr und Datei** (`tracing`):
+
+```bash
+TAKTWERK_LOG=debug TAKTWERK_LOG_FILE=taktwerk.log cargo run -p taktwerk-daemon
+TAKTWERK_LOG="info,taktwerk_net=trace" cargo run -p taktwerk-daemon   # + per-Paket-RTP
+```
+
+Default: eigene Crates `debug`, Fremd-Crates `info`. Per-Paket-Details liegen auf
+`trace`. Die Datei wird beim **graceful Shutdown (Ctrl-C)** vollständig geflusht.
+
 ## Node starten (headless, Phase 0)
 
 ```bash

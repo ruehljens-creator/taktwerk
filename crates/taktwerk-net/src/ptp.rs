@@ -48,6 +48,18 @@ pub enum PtpMessage {
     Other(PtpHeader),
 }
 
+impl PtpMessage {
+    /// Kurzname des Nachrichtentyps (für Logs).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            PtpMessage::Announce(_) => "Announce",
+            PtpMessage::Sync(_) => "Sync",
+            PtpMessage::FollowUp(_) => "Follow_Up",
+            PtpMessage::Other(_) => "Other",
+        }
+    }
+}
+
 /// Empfängt PTP-Nachrichten von beiden Ports (319 Event, 320 General).
 pub struct PtpListener {
     event: UdpSocket,
@@ -89,7 +101,10 @@ impl PtpListener {
                 }
             };
             match classify(datagram) {
-                Some(msg) => return Ok((msg, from)),
+                Some(msg) => {
+                    tracing::debug!(%from, kind = msg.kind(), "PTP-Nachricht empfangen");
+                    return Ok((msg, from));
+                }
                 None => continue, // unparsebar / uninteressant → weiterhören
             }
         }

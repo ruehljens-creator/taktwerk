@@ -8,9 +8,12 @@
 //! - `TAKTWERK_NAME`  — Anzeigename            (Default: Hostname-artig "taktwerk")
 //! - `TAKTWERK_IFACE` — Interface-IP (IPv4)    (Default: 0.0.0.0 = OS-Default)
 //! - `TAKTWERK_HTTP`  — REST-Bind-Adresse      (Default: 127.0.0.1:7788)
+//! - `TAKTWERK_NMOS`  — NMOS-Bind-Adresse      (Default: 127.0.0.1:7789)
 //! - `TAKTWERK_CH`    — Default-Kanäle          (Default: 2)
+//! - `TAKTWERK_LOG` / `TAKTWERK_LOG_FILE` — Debug-Log (siehe [`logging`]).
 
 mod handlers;
+mod logging;
 mod state;
 mod tasks;
 
@@ -18,6 +21,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use axum::routing::{get, post};
 use axum::Router;
+use tracing::{error, info};
 
 use taktwerk_core::StreamProfile;
 
@@ -25,6 +29,9 @@ use crate::state::{AppState, NodeInfo};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Debug-Log so früh wie möglich einrichten; Guard bis Programmende halten.
+    let _log_guard = logging::init();
+
     let name = std::env::var("TAKTWERK_NAME").unwrap_or_else(|_| "taktwerk".into());
     let iface: Ipv4Addr = std::env::var("TAKTWERK_IFACE")
         .ok()
@@ -67,12 +74,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let nmos_app = taktwerk_router::app(nmos_node);
         match tokio::net::TcpListener::bind(nmos_http).await {
             Ok(l) => {
-                println!("NMOS IS-04/IS-05 auf http://{nmos_http}/x-nmos/");
+                info!(%nmos_http, "NMOS IS-04/IS-05 aktiv unter /x-nmos/");
                 tokio::spawn(async move {
                     let _ = axum::serve(l, nmos_app).await;
                 });
             }
-            Err(e) => eprintln!("NMOS-Server konnte nicht binden ({nmos_http}): {e}"),
+            Err(e) => error!(%nmos_http, "NMOS-Server konnte nicht binden: {e}"),
         }
     }
 
@@ -90,8 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/streams/rx/unsubscribe", post(handlers::rx_unsubscribe))
         .with_state(app_state);
 
-    println!("taktwerkd \"{name}\" — REST auf http://{http}  (Interface {iface})");
     let listener = tokio::net::TcpListener::bind(http).await?;
+    info!(node = %name, %http, %iface, "taktwerkd bereit — REST + Web-UI aktiv");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -101,5 +108,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Beendet den Server sauber bei Ctrl-C.
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
-    println!("\nShutdown-Signal empfangen, beende taktwerkd.");
+    info!("Shutdown-Signal empfangen, beende taktwerkd.");
 }

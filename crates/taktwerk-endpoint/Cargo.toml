@@ -11,6 +11,7 @@ taktwerk-core = { path = "../taktwerk-core" }
 taktwerk-audio = { path = "../taktwerk-audio" }
 taktwerk-net = { path = "../taktwerk-net" }
 tokio = { version = "1", features = ["net", "rt", "time", "sync"] }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "time", "sync"] }

@@ -25,6 +25,14 @@ license = "MIT OR Apache-2.0"
 repository = ""
 authors = ["Taktwerk"]
 
+# Gemeinsame Logging-Bausteine (permissiv, MIT). Die Laufzeit-Crates nutzen die
+# `tracing`-Fassade; der Daemon richtet den Subscriber ein (stderr + Debug-Datei).
+# Der reine Kern (taktwerk-core) bleibt bewusst ohne Log-Dependency.
+[workspace.dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+
 [workspace.lints.rust]
 unsafe_code = "warn"
 
