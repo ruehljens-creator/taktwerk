@@ -147,6 +147,9 @@ cargo run -p taktwerk-daemon            # startet `taktwerkd`, REST auf 127.0.0.
 curl localhost:7788/health
 curl localhost:7788/node
 curl -X POST localhost:7788/streams/tx/start -H 'content-type: application/json' -d '{"channels":2}'
+# Hohe Kanalzahl (bis 64): Paketzeit wird automatisch MTU-sicher gewählt
+#   ≤8→1ms · ≤16→500µs · ≤32→250µs · ≤64→125µs (je 1152 B Payload, kein Jumbo)
+curl -X POST localhost:7788/streams/tx/start -H 'content-type: application/json' -d '{"channels":64}'
 curl localhost:7788/streams/tx           # {"running":true,"packets_sent":...}
 curl localhost:7788/streams/discovered   # per SAP entdeckte Streams
 

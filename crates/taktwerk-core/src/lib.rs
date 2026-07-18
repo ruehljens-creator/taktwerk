@@ -66,13 +66,54 @@ impl Encoding {
     }
 }
 
+/// Maximale Kanalzahl, die Taktwerk pro Stream in einen **Standard-MTU**-Rahmen
+/// (1500 B) packt: 64 Kanäle @ 125 µs = 1152 B Payload (siehe [`StreamProfile::aes67`]).
+pub const MAX_CHANNELS: u8 = 64;
+
 impl StreamProfile {
-    /// AES67 / ST-2110-30 **Level A**: 48 kHz, L24, 1 ms Paketzeit.
+    /// AES67 / ST-2110-30 **Level A**: 48 kHz, L24, 1 ms Paketzeit (≤ 8 Kanäle).
+    /// Interop-sichere Basis; für höhere Kanalzahlen siehe [`Self::aes67`].
     pub const fn level_a(channels: u8) -> Self {
         Self {
             sample_rate: 48_000,
             channels,
             ptime_us: 1_000,
+            encoding: Encoding::L24,
+        }
+    }
+
+    /// Wählt die **Paketzeit passend zur Kanalzahl**, so dass ein RTP-Paket immer
+    /// in einen Standard-Ethernet-Rahmen passt (kein Jumbo nötig) — genau wie
+    /// RAVENNA/Dante bei hohen Kanalzahlen. Alle Stufen ergeben 1152 B Payload:
+    ///
+    /// | Kanäle | ptime  | Frames |
+    /// |--------|--------|--------|
+    /// | ≤ 8    | 1 ms   | 48     |
+    /// | ≤ 16   | 500 µs | 24     |
+    /// | ≤ 32   | 250 µs | 12     |
+    /// | ≤ 64   | 125 µs | 6      |
+    ///
+    /// 48 kHz / L24. Bei ≤ 8 Kanälen identisch zu [`Self::level_a`] (voll AES67-
+    /// Level-A-kompatibel). Kanäle > [`MAX_CHANNELS`] werden auf 64 begrenzt.
+    pub const fn aes67(channels: u8) -> Self {
+        let ptime_us = if channels <= 8 {
+            1_000
+        } else if channels <= 16 {
+            500
+        } else if channels <= 32 {
+            250
+        } else {
+            125
+        };
+        let channels = if channels > MAX_CHANNELS {
+            MAX_CHANNELS
+        } else {
+            channels
+        };
+        Self {
+            sample_rate: 48_000,
+            channels,
+            ptime_us,
             encoding: Encoding::L24,
         }
     }
@@ -102,6 +143,29 @@ mod tests {
         assert_eq!(p.frames_per_packet(), 48); // 48 kHz * 1 ms
                                                // 48 Frames * 8 ch * 3 Byte (L24) = 1152 Byte
         assert_eq!(p.payload_bytes(), 1152);
+    }
+
+    #[test]
+    fn aes67_high_channel_counts_fit_standard_mtu() {
+        // Alle Stufen müssen unter die nutzbare Standard-MTU passen (< 1460 B).
+        for ch in [2u8, 8, 16, 32, 64] {
+            let p = StreamProfile::aes67(ch);
+            assert_eq!(p.channels, ch);
+            assert!(
+                p.payload_bytes() <= 1440,
+                "{ch}ch: {} B zu groß für Standard-MTU",
+                p.payload_bytes()
+            );
+        }
+        // Bekannte Eckpunkte.
+        assert_eq!(StreamProfile::aes67(8).ptime_us, 1_000);
+        assert_eq!(StreamProfile::aes67(32).ptime_us, 250);
+        assert_eq!(StreamProfile::aes67(64).ptime_us, 125);
+        assert_eq!(StreamProfile::aes67(64).payload_bytes(), 1152);
+        // ≤ 8 Kanäle: identisch zu Level A.
+        assert_eq!(StreamProfile::aes67(2), StreamProfile::level_a(2));
+        // Über dem Maximum wird gedeckelt.
+        assert_eq!(StreamProfile::aes67(200).channels, MAX_CHANNELS);
     }
 
     #[test]

@@ -47,7 +47,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let channels: u8 = std::env::var("TAKTWERK_CH")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(2);
+        .unwrap_or(2)
+        .clamp(1, taktwerk_core::MAX_CHANNELS);
     let nmos_http: SocketAddr = std::env::var("TAKTWERK_NMOS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -59,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let node = NodeInfo {
         name: name.clone(),
         interface: iface,
-        profile: StreamProfile::level_a(channels),
+        profile: StreamProfile::aes67(channels),
         ptp_slave,
         nmos_host: iface.to_string(),
         nmos_port: nmos_http.port(),
@@ -129,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             iface.to_string(),
             nmos_http.port(),
             iface.to_string(),
-            StreamProfile::level_a(channels),
+            StreamProfile::aes67(channels),
             "239.69.83.67",
             5004,
         ));

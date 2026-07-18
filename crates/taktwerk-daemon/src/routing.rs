@@ -28,7 +28,7 @@ fn build_sdp(host: &str, group: &str, port: u16, channels: u8) -> String {
         multicast_addr: group.to_string(),
         port,
         payload_type: 97,
-        profile: StreamProfile::level_a(channels),
+        profile: StreamProfile::aes67(channels),
         refclk: None,
         mediaclk_offset: 0,
     }
@@ -57,11 +57,11 @@ impl ReceiverControl for DaemonReceiverControl {
             .parse()
             .map_err(|_| format!("ungültige Multicast-Gruppe: {}", session.multicast_addr))?;
         let port = session.port;
-        let channels = session.profile.channels;
         let state = &self.0;
 
         stop_rx(state); // evtl. bestehendes Abo lösen
-        let profile = StreamProfile::level_a(channels);
+        // Profil direkt aus der SDP übernehmen (echte Kanalzahl + Paketzeit des Senders).
+        let profile = session.profile;
         let (shutdown, packets, handle) = start_rx(
             state.node.interface,
             group,
@@ -73,7 +73,7 @@ impl ReceiverControl for DaemonReceiverControl {
         let mut rx = state.rx.lock().unwrap();
         rx.running = true;
         rx.source = Some(format!("{group}:{port}"));
-        rx.channels = channels;
+        rx.channels = profile.channels;
         rx.packets = packets;
         rx.shutdown = Some(shutdown);
         rx.handle = Some(handle);

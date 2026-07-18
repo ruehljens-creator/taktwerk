@@ -192,8 +192,11 @@ pub async fn tx_start(
         .map_err(|_| (StatusCode::BAD_REQUEST, "ungültige group-Adresse".into()))?;
     let port = req.port.unwrap_or(5004);
     let channels = req.channels.unwrap_or(2);
-    if channels == 0 || channels > 8 {
-        return Err((StatusCode::BAD_REQUEST, "channels muss 1..=8 sein".into()));
+    if channels == 0 || channels > taktwerk_core::MAX_CHANNELS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("channels muss 1..={} sein", taktwerk_core::MAX_CHANNELS),
+        ));
     }
 
     let mut tx = state.tx.lock().unwrap();
@@ -201,7 +204,8 @@ pub async fn tx_start(
         return Err((StatusCode::CONFLICT, "TX läuft bereits".into()));
     }
 
-    let profile = StreamProfile::level_a(channels);
+    // Paketzeit passend zur Kanalzahl (≤8 = Level A/1 ms, sonst kürzer → MTU-safe).
+    let profile = StreamProfile::aes67(channels);
     let params = TxParams {
         iface: state.node.interface,
         group,
@@ -266,8 +270,11 @@ pub async fn rx_subscribe(
         .map_err(|_| (StatusCode::BAD_REQUEST, "ungültige group-Adresse".into()))?;
     let port = req.port.unwrap_or(5004);
     let channels = req.channels.unwrap_or(2);
-    if channels == 0 || channels > 8 {
-        return Err((StatusCode::BAD_REQUEST, "channels muss 1..=8 sein".into()));
+    if channels == 0 || channels > taktwerk_core::MAX_CHANNELS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("channels muss 1..={} sein", taktwerk_core::MAX_CHANNELS),
+        ));
     }
 
     let mut rx = state.rx.lock().unwrap();
@@ -275,7 +282,7 @@ pub async fn rx_subscribe(
         return Err((StatusCode::CONFLICT, "RX-Abonnement läuft bereits".into()));
     }
 
-    let profile = StreamProfile::level_a(channels);
+    let profile = StreamProfile::aes67(channels);
     let (shutdown, packets, handle) = start_rx(
         state.node.interface,
         group,
