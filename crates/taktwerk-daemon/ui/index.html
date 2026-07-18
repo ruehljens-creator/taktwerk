@@ -18,6 +18,10 @@
   header .sub { color: var(--muted); font-size: 13px; }
   header .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--off); display: inline-block; }
   header .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  header .lang { margin-left: auto; display: flex; gap: 4px; }
+  header .lang button { padding: 4px 10px; font-size: 12px; font-weight: 600;
+    background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  header .lang button.active { background: var(--accent); color: #06121f; border-color: var(--accent); }
   main { max-width: 1040px; margin: 0 auto; padding: 22px;
     display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
@@ -53,41 +57,48 @@
   <span class="dot" id="livedot"></span>
   <h1>Taktwerk</h1>
   <span class="sub" id="subtitle">AES67 Node</span>
+  <span class="lang">
+    <button id="lang-de" onclick="setLang('de')">DE</button>
+    <button id="lang-en" onclick="setLang('en')">EN</button>
+  </span>
 </header>
 
 <main>
   <section class="panel">
-    <h2>Knoten</h2>
+    <h2 data-i18n="h_node">Knoten</h2>
     <div class="kv" id="node">
-      <b>Name</b><span id="n-name">—</span>
-      <b>Interface</b><span id="n-iface">—</span>
-      <b>Profil</b><span id="n-profile">—</span>
+      <b data-i18n="l_name">Name</b><span id="n-name">—</span>
+      <b data-i18n="l_iface">Interface</b><span id="n-iface">—</span>
+      <b data-i18n="l_profile">Profil</b><span id="n-profile">—</span>
     </div>
   </section>
 
   <section class="panel">
-    <h2>PTP-Sync</h2>
-    <div class="status" id="ptp-status"><span class="dot"></span><span id="ptp-state">aus</span></div>
+    <h2 data-i18n="h_ptp">PTP-Sync</h2>
+    <div class="status" id="ptp-status"><span class="dot"></span><span id="ptp-state">—</span></div>
     <div class="kv" style="margin-top:10px">
-      <b>Offset</b><span id="ptp-offset">—</span>
-      <b>Pfad-Verz.</b><span id="ptp-delay">—</span>
-      <b>Grandmaster</b><span id="ptp-gm">—</span>
+      <b data-i18n="l_offset">Offset</b><span id="ptp-offset">—</span>
+      <b data-i18n="l_delay">Pfad-Verz.</b><span id="ptp-delay">—</span>
+      <b data-i18n="l_gm">Grandmaster</b><span id="ptp-gm">—</span>
     </div>
   </section>
 
   <section class="panel">
-    <h2>Discovery (SAP + RAVENNA)</h2>
-    <div id="disc-empty" class="muted">Noch keine Streams entdeckt.</div>
+    <h2 data-i18n="h_disc">Discovery (SAP + RAVENNA)</h2>
+    <div id="disc-empty" class="muted" data-i18n="disc_empty">Noch keine Streams entdeckt.</div>
     <table id="disc-table" style="display:none">
-      <thead><tr><th>Name</th><th>Via</th><th>Gruppe</th><th>ch</th><th>Quelle</th></tr></thead>
+      <thead><tr>
+        <th data-i18n="th_name">Name</th><th data-i18n="th_via">Via</th>
+        <th data-i18n="th_group">Gruppe</th><th data-i18n="th_ch">ch</th><th data-i18n="th_source">Quelle</th>
+      </tr></thead>
       <tbody id="disc-body"></tbody>
     </table>
   </section>
 
   <section class="panel">
-    <h2>Senden (TX)</h2>
-    <div class="status" id="tx-status"><span class="dot"></span><span id="tx-state">aus</span></div>
-    <div class="big"><span id="tx-packets">0</span> <span class="muted" style="font-size:13px">Pakete</span></div>
+    <h2 data-i18n="h_tx">Senden (TX)</h2>
+    <div class="status" id="tx-status"><span class="dot"></span><span id="tx-state">—</span></div>
+    <div class="big"><span id="tx-packets">0</span> <span class="muted" style="font-size:13px" data-i18n="packets">Pakete</span></div>
     <div class="muted" id="tx-dest"></div>
     <div class="row">
       <input id="tx-group" value="239.69.83.67" />
@@ -95,16 +106,16 @@
       <input id="tx-ch" class="small" value="2" />
     </div>
     <div class="row">
-      <button id="tx-start">Start</button>
-      <button id="tx-stop" class="ghost">Stop</button>
+      <button id="tx-start" data-i18n="btn_start">Start</button>
+      <button id="tx-stop" class="ghost" data-i18n="btn_stop">Stop</button>
     </div>
     <div class="err" id="tx-err"></div>
   </section>
 
   <section class="panel">
-    <h2>Empfangen (RX)</h2>
-    <div class="status" id="rx-status"><span class="dot"></span><span id="rx-state">aus</span></div>
-    <div class="big"><span id="rx-packets">0</span> <span class="muted" style="font-size:13px">Pakete</span></div>
+    <h2 data-i18n="h_rx">Empfangen (RX)</h2>
+    <div class="status" id="rx-status"><span class="dot"></span><span id="rx-state">—</span></div>
+    <div class="big"><span id="rx-packets">0</span> <span class="muted" style="font-size:13px" data-i18n="packets">Pakete</span></div>
     <div class="muted" id="rx-src"></div>
     <div class="row">
       <input id="rx-group" value="239.69.83.67" />
@@ -112,53 +123,118 @@
       <input id="rx-ch" class="small" value="2" />
     </div>
     <div class="row">
-      <button id="rx-sub">Abonnieren</button>
-      <button id="rx-unsub" class="ghost">Beenden</button>
+      <button id="rx-sub" data-i18n="btn_sub">Abonnieren</button>
+      <button id="rx-unsub" class="ghost" data-i18n="btn_unsub">Beenden</button>
     </div>
     <div class="err" id="rx-err"></div>
   </section>
 
   <section class="panel wide">
-    <h2>Netzwerk-Traffic</h2>
+    <h2 data-i18n="h_traffic">Netzwerk-Traffic</h2>
     <table>
-      <thead><tr><th>Protokoll</th><th>Pakete</th><th>Daten</th><th>Rate (pps)</th><th>Rate (Daten/s)</th></tr></thead>
+      <thead><tr>
+        <th data-i18n="th_proto">Protokoll</th><th data-i18n="th_packets">Pakete</th>
+        <th data-i18n="th_data">Daten</th><th data-i18n="th_rate_pps">Rate (pps)</th><th data-i18n="th_rate_data">Rate (Daten/s)</th>
+      </tr></thead>
       <tbody id="traffic-body"></tbody>
-      <tfoot><tr id="traffic-total" style="font-weight:600">
-        <td>Gesamt</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tfoot>
+      <tfoot><tr id="traffic-total" style="font-weight:600"><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tfoot>
     </table>
-    <div class="muted" style="margin-top:8px">Gezählt wird der vom Knoten gesehene
-      SAP-/PTP-Control-Traffic und RTP abonnierter Streams (kein Sniffer).</div>
+    <div class="muted" style="margin-top:8px" data-i18n="traffic_note"></div>
   </section>
 
   <section class="panel wide">
-    <h2>Geräte im Netz</h2>
-    <div id="dev-empty" class="muted">Noch keine Geräte gesehen.</div>
+    <h2 data-i18n="h_devices">Geräte im Netz</h2>
+    <div id="dev-empty" class="muted" data-i18n="dev_empty">Noch keine Geräte gesehen.</div>
     <table id="dev-table" style="display:none">
-      <thead><tr><th>IP</th><th>Name</th><th>Protokolle</th><th>Pakete</th><th>Daten</th><th>Rate</th><th>zuletzt</th></tr></thead>
+      <thead><tr>
+        <th data-i18n="th_ip">IP</th><th data-i18n="th_name">Name</th><th data-i18n="th_protocols">Protokolle</th>
+        <th data-i18n="th_packets">Pakete</th><th data-i18n="th_data">Daten</th><th data-i18n="th_rate_pps">Rate</th><th data-i18n="th_last">zuletzt</th>
+      </tr></thead>
       <tbody id="dev-body"></tbody>
     </table>
   </section>
 
   <section class="panel wide">
-    <h2>Kreuzschiene (Routing)</h2>
-    <div id="grid-empty" class="muted">Keine Sender/Receiver bekannt.</div>
+    <h2 data-i18n="h_grid">Kreuzschiene (Routing)</h2>
+    <div id="grid-empty" class="muted" data-i18n="grid_empty">Keine Sender/Receiver bekannt.</div>
     <div style="overflow-x:auto"><table id="grid" style="display:none">
-      <thead><tr><th>Sender ↓ / Receiver →</th></tr></thead>
+      <thead><tr><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
-    <div class="muted" style="margin-top:8px">Zelle klicken = Koppelpunkt setzen/lösen
-      (via NMOS IS-05). Steuerbar sind NMOS-Receiver + eigene Senke.</div>
+    <div class="muted" style="margin-top:8px" data-i18n="grid_note"></div>
     <div class="err" id="grid-err"></div>
   </section>
 
   <section class="panel wide">
-    <h2>APIs</h2>
-    <div class="muted">REST: diese Oberfläche (<code>/devices</code>, <code>/traffic</code>, …) ·
-      NMOS IS-04/IS-05 auf eigenem Port unter <code>/x-nmos/</code>.</div>
+    <h2 data-i18n="h_apis">APIs</h2>
+    <div class="muted" data-i18n="apis_note"></div>
   </section>
 </main>
 
 <script>
+const I18N = {
+  de: {
+    sub: "AES67-Node",
+    h_node: "Knoten", h_ptp: "PTP-Sync", h_disc: "Discovery (SAP + RAVENNA)",
+    h_tx: "Senden (TX)", h_rx: "Empfangen (RX)", h_traffic: "Netzwerk-Traffic",
+    h_devices: "Geräte im Netz", h_grid: "Kreuzschiene (Routing)", h_apis: "APIs",
+    l_name: "Name", l_iface: "Interface", l_profile: "Profil",
+    l_offset: "Offset", l_delay: "Pfad-Verz.", l_gm: "Grandmaster",
+    packets: "Pakete",
+    st_off: "aus", st_running: "läuft", st_locked: "gelockt", st_searching: "sucht Master…", st_off_sys: "aus (System-Clock)",
+    disc_empty: "Noch keine Streams entdeckt.",
+    th_name: "Name", th_via: "Via", th_group: "Gruppe", th_ch: "ch", th_source: "Quelle",
+    btn_start: "Start", btn_stop: "Stop", btn_sub: "Abonnieren", btn_unsub: "Beenden",
+    th_proto: "Protokoll", th_packets: "Pakete", th_data: "Daten", th_rate_pps: "Rate (pps)", th_rate_data: "Rate (Daten/s)",
+    total: "Gesamt", devices_word: "Geräte",
+    traffic_note: "Gezählt wird der vom Knoten gesehene SAP-/PTP-Control-Traffic und RTP abonnierter Streams (kein Sniffer).",
+    dev_empty: "Noch keine Geräte gesehen.",
+    th_ip: "IP", th_protocols: "Protokolle", th_last: "zuletzt",
+    grid_empty: "Keine Sender/Receiver bekannt.",
+    grid_corner: "Sender ↓ / Receiver →",
+    grid_note: "Zelle klicken = Koppelpunkt setzen/lösen (via NMOS IS-05). Steuerbar sind NMOS-Receiver + eigene Senke.",
+    route_failed: "Route fehlgeschlagen: ",
+    apis_note: "REST: diese Oberfläche (/devices, /traffic, …) · NMOS IS-04/IS-05 auf eigenem Port unter /x-nmos/.",
+    now: "jetzt", unit_s: " s", unit_min: " min", locale: "de-DE",
+  },
+  en: {
+    sub: "AES67 node",
+    h_node: "Node", h_ptp: "PTP sync", h_disc: "Discovery (SAP + RAVENNA)",
+    h_tx: "Send (TX)", h_rx: "Receive (RX)", h_traffic: "Network traffic",
+    h_devices: "Devices on network", h_grid: "Routing matrix", h_apis: "APIs",
+    l_name: "Name", l_iface: "Interface", l_profile: "Profile",
+    l_offset: "Offset", l_delay: "Path delay", l_gm: "Grandmaster",
+    packets: "packets",
+    st_off: "off", st_running: "running", st_locked: "locked", st_searching: "searching master…", st_off_sys: "off (system clock)",
+    disc_empty: "No streams discovered yet.",
+    th_name: "Name", th_via: "Via", th_group: "Group", th_ch: "ch", th_source: "Source",
+    btn_start: "Start", btn_stop: "Stop", btn_sub: "Subscribe", btn_unsub: "Unsubscribe",
+    th_proto: "Protocol", th_packets: "Packets", th_data: "Data", th_rate_pps: "Rate (pps)", th_rate_data: "Rate (data/s)",
+    total: "Total", devices_word: "devices",
+    traffic_note: "Counts the SAP/PTP control traffic and RTP of subscribed streams the node sees (no sniffer).",
+    dev_empty: "No devices seen yet.",
+    th_ip: "IP", th_protocols: "Protocols", th_last: "last seen",
+    grid_empty: "No senders/receivers known.",
+    grid_corner: "Sender ↓ / Receiver →",
+    grid_note: "Click a cell = set/clear crosspoint (via NMOS IS-05). Controllable: NMOS receivers + own sink.",
+    route_failed: "Route failed: ",
+    apis_note: "REST: this UI (/devices, /traffic, …) · NMOS IS-04/IS-05 on its own port under /x-nmos/.",
+    now: "now", unit_s: " s", unit_min: " min", locale: "en-US",
+  }
+};
+
+let LANG = localStorage.getItem("taktwerk-lang");
+if (LANG !== "de" && LANG !== "en") LANG = (navigator.language || "en").toLowerCase().startsWith("de") ? "de" : "en";
+const t = (k) => (I18N[LANG] && I18N[LANG][k]) || k;
+
+function applyStatic() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.documentElement.lang = LANG;
+  document.getElementById("lang-de").classList.toggle("active", LANG === "de");
+  document.getElementById("lang-en").classList.toggle("active", LANG === "en");
+}
+function setLang(l) { LANG = l; localStorage.setItem("taktwerk-lang", l); applyStatic(); refresh(); }
+
 const $ = (id) => document.getElementById(id);
 async function jget(u) { const r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); }
 async function jpost(u, body) {
@@ -173,21 +249,21 @@ function fmtBytes(b) {
   const u = ["KB", "MB", "GB", "TB"]; let i = -1; do { b /= 1024; i++; } while (b >= 1024 && i < u.length - 1);
   return b.toFixed(b < 10 ? 1 : 0) + " " + u[i];
 }
-function fmtNum(n) { return (n || 0).toLocaleString("de"); }
-function fmtAge(s) { return s < 2 ? "jetzt" : s < 60 ? s + " s" : Math.floor(s / 60) + " min"; }
+function fmtNum(n) { return (n || 0).toLocaleString(t("locale")); }
+function fmtAge(s) { return s < 2 ? t("now") : s < 60 ? s + t("unit_s") : Math.floor(s / 60) + t("unit_min"); }
 const PROTO_LABEL = { sap: "SAP", ptp: "PTP", rtp: "RTP" };
 
-function renderTraffic(t) {
+function renderTraffic(tr) {
   const body = $("traffic-body"); body.innerHTML = "";
   for (const p of ["sap", "ptp", "rtp"]) {
-    const s = (t.by_proto && t.by_proto[p]) || { packets: 0, bytes: 0, pps: 0, bps: 0 };
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${PROTO_LABEL[p]}</td><td>${fmtNum(s.packets)}</td><td>${fmtBytes(s.bytes)}</td><td>${fmtNum(s.pps)}</td><td>${fmtBytes(s.bps)}/s</td>`;
-    body.appendChild(tr);
+    const s = (tr.by_proto && tr.by_proto[p]) || { packets: 0, bytes: 0, pps: 0, bps: 0 };
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${PROTO_LABEL[p]}</td><td>${fmtNum(s.packets)}</td><td>${fmtBytes(s.bytes)}</td><td>${fmtNum(s.pps)}</td><td>${fmtBytes(s.bps)}/s</td>`;
+    body.appendChild(row);
   }
-  const tot = t.total || { packets: 0, bytes: 0, pps: 0, bps: 0 };
+  const tot = tr.total || { packets: 0, bytes: 0, pps: 0, bps: 0 };
   $("traffic-total").innerHTML =
-    `<td>Gesamt (${t.device_count || 0} Geräte)</td><td>${fmtNum(tot.packets)}</td><td>${fmtBytes(tot.bytes)}</td><td>${fmtNum(tot.pps)}</td><td>${fmtBytes(tot.bps)}/s</td>`;
+    `<td>${t("total")} (${tr.device_count || 0} ${t("devices_word")})</td><td>${fmtNum(tot.packets)}</td><td>${fmtBytes(tot.bytes)}</td><td>${fmtNum(tot.pps)}</td><td>${fmtBytes(tot.bps)}/s</td>`;
 }
 
 function renderDevices(devs) {
@@ -197,11 +273,11 @@ function renderDevices(devs) {
   devs.sort((a, b) => b.bytes - a.bytes);
   for (const d of devs) {
     const protos = (d.protocols || []).map(p => PROTO_LABEL[p] || p).join(", ");
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${d.ip}</td><td>${d.name || '<span class="muted">—</span>'}</td>` +
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${d.ip}</td><td>${d.name || '<span class="muted">—</span>'}</td>` +
       `<td>${protos}</td><td>${fmtNum(d.packets)}</td><td>${fmtBytes(d.bytes)}</td>` +
       `<td>${fmtNum(d.pps)} pps · ${fmtBytes(d.bps)}/s</td><td>${fmtAge(d.age_s)}</td>`;
-    body.appendChild(tr);
+    body.appendChild(row);
   }
 }
 
@@ -211,7 +287,7 @@ async function routeCell(receiver, sender, connected) {
   if (connected) { body.disconnect = true; }
   else { body.group = sender.group; body.media_port = sender.port; body.channels = sender.channels; }
   try { await jpost("/route", body); setTimeout(refresh, 300); }
-  catch (e) { $("grid-err").textContent = "Route fehlgeschlagen: " + e.message; }
+  catch (e) { $("grid-err").textContent = t("route_failed") + e.message; }
 }
 
 function renderGrid(reg) {
@@ -220,23 +296,23 @@ function renderGrid(reg) {
   if (!senders.length || !receivers.length) { $("grid-empty").style.display = ""; table.style.display = "none"; return; }
   $("grid-empty").style.display = "none"; table.style.display = "";
   const head = table.querySelector("thead tr");
-  head.innerHTML = "<th>Sender ↓ / Receiver →</th>" + receivers.map(r => `<th>${r.name}</th>`).join("");
+  head.innerHTML = `<th>${t("grid_corner")}</th>` + receivers.map(r => `<th>${r.name}</th>`).join("");
   const body = table.querySelector("tbody"); body.innerHTML = "";
   for (const s of senders) {
-    const tr = document.createElement("tr");
+    const row = document.createElement("tr");
     let cells = `<td>${s.name} <span class="muted">${s.group}:${s.port}</span></td>`;
     for (const r of receivers) {
       const connected = r.source === `${s.group}:${s.port}`;
-      cells += `<td style="text-align:center;cursor:pointer" data-r="${r.id}" data-s="${s.id}">` +
+      cells += `<td style="text-align:center;cursor:pointer" data-r="${r.id}">` +
         `<span style="font-size:18px;color:${connected ? 'var(--ok)' : 'var(--off)'}">${connected ? '●' : '○'}</span></td>`;
     }
-    tr.innerHTML = cells;
-    tr.querySelectorAll("td[data-r]").forEach((td, i) => {
+    row.innerHTML = cells;
+    row.querySelectorAll("td[data-r]").forEach((td, i) => {
       const r = receivers[i];
       const connected = r.source === `${s.group}:${s.port}`;
       td.onclick = () => routeCell(r, s, connected);
     });
-    body.appendChild(tr);
+    body.appendChild(row);
   }
 }
 
@@ -250,23 +326,23 @@ async function refresh() {
     renderDevices(devs);
     renderGrid(reg);
 
-    if (!ptp.enabled) { setStatus($("ptp-status"), false, "aus (System-Clock)"); }
-    else { setStatus($("ptp-status"), ptp.synced, ptp.synced ? "gelockt" : "sucht Master…"); }
-    $("ptp-offset").textContent = ptp.enabled ? `${ptp.offset_ns.toLocaleString("de")} ns` : "—";
-    $("ptp-delay").textContent = ptp.enabled ? `${ptp.path_delay_ns.toLocaleString("de")} ns` : "—";
+    if (!ptp.enabled) { setStatus($("ptp-status"), false, t("st_off_sys")); }
+    else { setStatus($("ptp-status"), ptp.synced, ptp.synced ? t("st_locked") : t("st_searching")); }
+    $("ptp-offset").textContent = ptp.enabled ? `${fmtNum(ptp.offset_ns)} ns` : "—";
+    $("ptp-delay").textContent = ptp.enabled ? `${fmtNum(ptp.path_delay_ns)} ns` : "—";
     $("ptp-gm").textContent = ptp.grandmaster || "—";
     $("livedot").classList.add("live");
     $("n-name").textContent = node.name;
-    $("subtitle").textContent = "AES67 Node · " + node.name;
+    $("subtitle").textContent = t("sub") + " · " + node.name;
     $("n-iface").textContent = node.interface;
     $("n-profile").textContent = `${node.profile.channels} ch · ${node.profile.sample_rate} Hz · ${node.profile.encoding} · ${node.profile.ptime_us} µs`;
 
-    setStatus($("tx-status"), tx.running, tx.running ? "läuft" : "aus");
-    $("tx-packets").textContent = tx.packets_sent.toLocaleString("de");
+    setStatus($("tx-status"), tx.running, tx.running ? t("st_running") : t("st_off"));
+    $("tx-packets").textContent = fmtNum(tx.packets_sent);
     $("tx-dest").textContent = tx.dest ? "→ " + tx.dest : "";
 
-    setStatus($("rx-status"), rx.running, rx.running ? "läuft" : "aus");
-    $("rx-packets").textContent = rx.packets_recv.toLocaleString("de");
+    setStatus($("rx-status"), rx.running, rx.running ? t("st_running") : t("st_off"));
+    $("rx-packets").textContent = fmtNum(rx.packets_recv);
     $("rx-src").textContent = rx.source ? "← " + rx.source : "";
 
     const body = $("disc-body"); body.innerHTML = "";
@@ -274,10 +350,10 @@ async function refresh() {
     else {
       $("disc-empty").style.display = "none"; $("disc-table").style.display = "";
       for (const d of disc) {
-        const tr = document.createElement("tr"); tr.className = "clk";
-        tr.innerHTML = `<td>${d.session_name}</td><td>${d.via || ""}</td><td>${d.multicast_addr}:${d.port}</td><td>${d.channels}</td><td>${d.source}</td>`;
-        tr.onclick = () => { $("rx-group").value = d.multicast_addr; $("rx-port").value = d.port; $("rx-ch").value = d.channels; };
-        body.appendChild(tr);
+        const row = document.createElement("tr"); row.className = "clk";
+        row.innerHTML = `<td>${d.session_name}</td><td>${d.via || ""}</td><td>${d.multicast_addr}:${d.port}</td><td>${d.channels}</td><td>${d.source}</td>`;
+        row.onclick = () => { $("rx-group").value = d.multicast_addr; $("rx-port").value = d.port; $("rx-ch").value = d.channels; };
+        body.appendChild(row);
       }
     }
   } catch (e) { $("livedot").classList.remove("live"); }
@@ -292,6 +368,7 @@ $("rx-sub").onclick = async () => { $("rx-err").textContent = "";
   catch (e) { $("rx-err").textContent = e.message; } };
 $("rx-unsub").onclick = async () => { try { await jpost("/streams/rx/unsubscribe"); refresh(); } catch (e) { $("rx-err").textContent = e.message; } };
 
+applyStatic();
 refresh();
 setInterval(refresh, 1000);
 </script>
