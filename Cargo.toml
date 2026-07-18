@@ -22,8 +22,8 @@ members = [
 version = "0.0.1"
 edition = "2021"
 rust-version = "1.75"
-license = "MIT OR Apache-2.0"
-repository = ""
+license = "MIT"
+repository = "https://github.com/ruehljens-creator/taktwerk"
 authors = ["Taktwerk"]
 
 # Gemeinsame Logging-Bausteine (permissiv, MIT). Die Laufzeit-Crates nutzen die

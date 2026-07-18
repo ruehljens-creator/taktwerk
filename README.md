@@ -1,11 +1,21 @@
 # Taktwerk
 
+> **Open, Dante-free AES67 / ST 2110-30 / RAVENNA audio-over-IP node in Rust** —
+> a virtual sound card with built-in **NMOS** control plane (IS-04/IS-05), **PTP**
+> (IEEE 1588) grandmaster/slave, **SAP + RAVENNA (mDNS/RTSP)** discovery, and a
+> web UI showing devices and network traffic. MIT-licensed, cross-platform
+> (Linux · macOS · Windows). No Dante, no per-seat licensing.
+
 Offener **AES67-Node** — eine virtuelle Soundkarte (Audio-over-IP) auf Basis
 offener Standards (AES67 / RAVENNA / ST-2110-30), Dante-frei und lizenzfrei.
 Zwei zuschaltbare Rollen: **Router/Kreuzschiene** (Control-Plane) und
 **PTP-Masterclock**. Bedienung über ein gemeinsames Web-Frontend.
 
 Vollständige Spezifikation: [`Taktwerk_Projektbrief.md`](Taktwerk_Projektbrief.md).
+
+*Keywords: AES67, ST 2110, ST 2110-30, RAVENNA, NMOS, IS-04, IS-05, AMWA, PTP,
+IEEE 1588, audio over IP, AoIP, RTP L24, SAP, mDNS/DNS-SD, RTSP, SDP, broadcast
+audio, media networking, Dante alternative, virtual sound card, Rust.*
 
 > **Status:** Phase 0 — plattformneutraler Protokoll-/DSP-Kern. Headless
 > (kein virtuelles Gerät), auf allen Ziel-OS baubar und testbar.
@@ -164,4 +174,6 @@ dem Linux-Server.
 
 ## Lizenz
 
-MIT OR Apache-2.0 (permissiv, passend zur „kein Dante, keine Lizenz"-Prämisse).
+**MIT** (siehe [LICENSE](LICENSE)) — permissiv, passend zur „kein Dante, keine
+Lizenz"-Prämisse. Abhängigkeiten sind ausschließlich MIT- bzw. MIT/Apache-2.0-
+lizenziert.
