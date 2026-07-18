@@ -1,0 +1,20 @@
+[package]
+name = "taktwerk-net"
+description = "Netz-Schicht: Multicast-UDP-Sockets + RTP-Sender/-Receiver fuer AES67 (tokio)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+taktwerk-core = { path = "../taktwerk-core" }
+# tokio: async UDP. socket2: Multicast-Optionen (Join, Interface, TTL), die die
+# std-Sockets nicht direkt bieten. Beide permissiv (MIT), plattformneutral.
+tokio = { version = "1", features = ["net", "rt", "time", "sync"] }
+socket2 = "0.5"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true
