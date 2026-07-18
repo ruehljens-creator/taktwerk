@@ -1,12 +1,17 @@
-//! PTP / IEEE 1588 — Datentypen und **BMCA** (Best Master Clock Algorithm).
+//! PTP / IEEE 1588 — Datentypen, **BMCA** (Best Master Clock Algorithm) und
+//! Wire-Format ([`wire`]).
 //!
 //! Der Protokoll-Kern ist OS-neutral: Er entscheidet aus zwei Clock-Datensaetzen,
-//! welche die bessere Master-Uhr ist. Das *Timestamping* (woher die Zeitstempel
-//! kommen — Software auf macOS/Windows, `SO_TIMESTAMPING`/HW auf Linux) sitzt
-//! hinter dem `TimeSource`-Trait in `taktwerk-ptp` und beruehrt diese Logik nicht.
+//! welche die bessere Master-Uhr ist, und parst/baut PTP-Nachrichten. Das
+//! *Timestamping* (woher die lokalen Zeitstempel kommen — Software auf
+//! macOS/Windows, `SO_TIMESTAMPING`/HW auf Linux) sitzt hinter dem
+//! [`crate::clock::TimeSource`]-Trait und beruehrt diese Logik nicht.
 //!
 //! Zwei PTP-Profile sind Ziel (§7.2): AES67-Media-Profil und SMPTE ST 2059-2 —
 //! sie unterscheiden sich in Domain/Intervallen, nicht in der BMCA-Ordnung.
+
+pub mod servo;
+pub mod wire;
 
 /// EUI-64 Clock-Identity.
 pub type ClockIdentity = [u8; 8];
