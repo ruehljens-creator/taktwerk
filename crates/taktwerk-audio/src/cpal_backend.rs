@@ -117,6 +117,10 @@ pub struct CpalBackend {
     playback_buf: Arc<Mutex<VecDeque<i32>>>,
     frames_written: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
+    /// ASRC (nur Wiedergabe-Richtung): gleicht den Drift zwischen Netz-/PTP-Takt
+    /// und Geräte-Takt aus, indem er die Eingabe minimal nachresampled. `None` im
+    /// reinen Capture-Betrieb.
+    asrc: Option<crate::asrc::Asrc>,
     _thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -143,16 +147,41 @@ impl CpalBackend {
         let frames_written = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
 
-        let (cb, pb, fw, st) = (
+        // ASRC nur für die Wiedergabe-Richtung; der Ziel-Füllstand steuert auch den
+        // Prime-Gate (Puffer erst füllen, dann das Gerät auslesen lassen).
+        let asrc = if playback {
+            Some(crate::asrc::Asrc::new(
+                profile.channels as usize,
+                profile.sample_rate,
+            ))
+        } else {
+            None
+        };
+        let target_frames = asrc.as_ref().map(|a| a.target_frames()).unwrap_or(0);
+        let primed = Arc::new(AtomicBool::new(false));
+
+        let (cb, pb, fw, st, pr) = (
             capture_buf.clone(),
             playback_buf.clone(),
             frames_written.clone(),
             stop.clone(),
+            primed.clone(),
         );
         // Streams im eigenen Thread bauen & am Leben halten (cpal-Streams !Send).
         let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
         let thread = std::thread::spawn(move || {
-            match build_streams(profile, capture, playback, capture_name, playback_name, cb, pb, fw) {
+            match build_streams(
+                profile,
+                capture,
+                playback,
+                capture_name,
+                playback_name,
+                cb,
+                pb,
+                fw,
+                pr,
+                target_frames,
+            ) {
                 Ok(streams) => {
                     let _ = ready_tx.send(Ok(()));
                     while !st.load(Ordering::Relaxed) {
@@ -173,6 +202,7 @@ impl CpalBackend {
                 playback_buf,
                 frames_written,
                 stop,
+                asrc,
                 _thread: Some(thread),
             }),
             Ok(Err(e)) => Err(AudioError::Open(e)),
@@ -209,19 +239,30 @@ impl AudioBackend for CpalBackend {
     }
 
     fn write_playback(&mut self, samples: &[i32]) -> Result<(), AudioError> {
-        let ch = self.profile.channels as u64;
+        let ch = self.profile.channels as usize;
+        let cap = max_samples(&self.profile);
         {
             let mut buf = self.playback_buf.lock().unwrap();
-            buf.extend(samples.iter().copied());
+            match self.asrc.as_mut() {
+                // ASRC: aus dem aktuellen Füllstand ein Resample-Verhältnis führen
+                // und die Eingabe minimal nachziehen, bevor sie in den Puffer geht.
+                Some(asrc) if ch > 0 => {
+                    let fill_frames = buf.len() / ch;
+                    let mut out = Vec::with_capacity(samples.len());
+                    asrc.process(fill_frames, samples, &mut out);
+                    tracing::trace!(ratio = asrc.ratio(), fill = fill_frames, "ASRC");
+                    buf.extend(out.iter().copied());
+                }
+                _ => buf.extend(samples.iter().copied()),
+            }
             // Überlauf begrenzen (älteste verwerfen).
-            let cap = max_samples(&self.profile);
             while buf.len() > cap {
                 buf.pop_front();
             }
         }
         if ch > 0 {
             self.frames_written
-                .fetch_add(samples.len() as u64 / ch, Ordering::Relaxed);
+                .fetch_add(samples.len() as u64 / ch as u64, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -238,6 +279,8 @@ fn build_streams(
     capture_buf: Arc<Mutex<VecDeque<i32>>>,
     playback_buf: Arc<Mutex<VecDeque<i32>>>,
     _frames_written: Arc<AtomicU64>,
+    primed: Arc<AtomicBool>,
+    target_frames: usize,
 ) -> Result<Vec<cpal::Stream>, String> {
     let host = cpal::default_host();
     let mut streams = Vec::new();
@@ -301,11 +344,23 @@ fn build_streams(
             .map_err(|e| e.to_string())?
             .sample_format();
         let buf = playback_buf.clone();
+        // Prime-Gate: bis der Puffer den Ziel-Füllstand erreicht, Stille ausgeben
+        // und NICHT auslesen — so hat der Jitter-Puffer beim Start seine Tiefe,
+        // bevor das Gerät zu leeren beginnt (danach hält der ASRC ihn dort).
+        let target_samples = target_frames * profile.channels as usize;
         let stream = match fmt {
             SampleFormat::F32 => dev.build_output_stream(
                 &config,
                 move |data: &mut [f32], _| {
                     let mut b = buf.lock().unwrap();
+                    if !primed.load(Ordering::Relaxed) {
+                        if b.len() >= target_samples {
+                            primed.store(true, Ordering::Relaxed);
+                        } else {
+                            data.iter_mut().for_each(|s| *s = 0.0);
+                            return;
+                        }
+                    }
                     for slot in data.iter_mut() {
                         *slot = i32_to_f32(b.pop_front().unwrap_or(0));
                     }
@@ -317,6 +372,14 @@ fn build_streams(
                 &config,
                 move |data: &mut [i16], _| {
                     let mut b = buf.lock().unwrap();
+                    if !primed.load(Ordering::Relaxed) {
+                        if b.len() >= target_samples {
+                            primed.store(true, Ordering::Relaxed);
+                        } else {
+                            data.iter_mut().for_each(|s| *s = 0);
+                            return;
+                        }
+                    }
                     for slot in data.iter_mut() {
                         *slot = (b.pop_front().unwrap_or(0) >> 16) as i16;
                     }

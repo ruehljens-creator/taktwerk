@@ -19,6 +19,8 @@
 
 use taktwerk_core::StreamProfile;
 
+pub mod asrc;
+
 #[cfg(feature = "cpal-backend")]
 pub mod cpal_backend;
 #[cfg(feature = "cpal-backend")]
