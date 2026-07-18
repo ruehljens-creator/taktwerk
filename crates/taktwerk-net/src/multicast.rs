@@ -128,7 +128,11 @@ mod tests {
         // Port 0 → OS waehlt; Join trotzdem gueltig.
         let cfg = MulticastConfig { port: 0, ..cfg };
         let sock = bind_receiver(&cfg);
-        assert!(sock.is_ok(), "join_multicast_v4 schlug fehl: {:?}", sock.err());
+        assert!(
+            sock.is_ok(),
+            "join_multicast_v4 schlug fehl: {:?}",
+            sock.err()
+        );
     }
 
     #[tokio::test]

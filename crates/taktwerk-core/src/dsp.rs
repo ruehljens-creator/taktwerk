@@ -98,7 +98,10 @@ mod tests {
     fn ratio_is_hard_clamped() {
         let mut s = AsrcServo::new(1.0, 1.0, 0.002);
         let r = s.update(1.0e9); // absurd grosser Fehler
-        assert!((r - 1.002).abs() < 1e-9, "ratio {r} muss auf +max_deviation klemmen");
+        assert!(
+            (r - 1.002).abs() < 1e-9,
+            "ratio {r} muss auf +max_deviation klemmen"
+        );
     }
 
     #[test]
@@ -121,6 +124,9 @@ mod tests {
             // ratio>1 → mehr Auslesen → Fuellstand sinkt (vereinfachtes Modell)
             fill -= (ratio - 1.0) * 1.0e6;
         }
-        assert!(fill.abs() < 800.0, "Fuellstandsfehler {fill} sollte kleiner geworden sein");
+        assert!(
+            fill.abs() < 800.0,
+            "Fuellstandsfehler {fill} sollte kleiner geworden sein"
+        );
     }
 }

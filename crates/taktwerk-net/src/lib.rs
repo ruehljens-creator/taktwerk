@@ -10,6 +10,7 @@
 //!   damit Sender/Receiver selbst OS-neutral bleiben.
 //! - [`sender`]    — [`sender::RtpSender`]: interleavte Samples → RTP-Pakete → Netz.
 //! - [`receiver`]  — [`receiver::RtpReceiver`]: Netz → RTP-Parse → Samples.
+//! - [`sap`]       — SAP-Discovery: eigenen Stream ankündigen, fremde einsammeln.
 //!
 //! Sender und Receiver arbeiten gegen eine beliebige [`std::net::SocketAddr`]
 //! (Multicast **oder** Unicast) — das macht die RTP-Framing-Pipeline ohne
@@ -18,8 +19,10 @@
 
 pub mod multicast;
 pub mod receiver;
+pub mod sap;
 pub mod sender;
 
-pub use multicast::{MulticastConfig, bind_receiver, bind_sender};
+pub use multicast::{bind_receiver, bind_sender, MulticastConfig};
 pub use receiver::{ReceivedPacket, RtpReceiver};
+pub use sap::{bind_sap_announcer, bind_sap_listener, SapAnnouncer, SapEvent, SapListener};
 pub use sender::RtpSender;

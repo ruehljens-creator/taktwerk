@@ -12,6 +12,8 @@ members = [
     "crates/taktwerk-core",
     "crates/taktwerk-audio",
     "crates/taktwerk-net",
+    "crates/taktwerk-endpoint",
+    "crates/taktwerk-daemon",
 ]
 
 [workspace.package]

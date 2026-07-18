@@ -75,13 +75,15 @@ impl ClockDataset {
     }
 
     /// Waehlt aus einer Menge fremder Uhren die beste; None, wenn leer.
-    pub fn best<'a>(datasets: impl IntoIterator<Item = &'a ClockDataset>) -> Option<&'a ClockDataset> {
-        datasets.into_iter().reduce(|best, cur| {
-            match ClockDataset::compare(best, cur) {
+    pub fn best<'a>(
+        datasets: impl IntoIterator<Item = &'a ClockDataset>,
+    ) -> Option<&'a ClockDataset> {
+        datasets
+            .into_iter()
+            .reduce(|best, cur| match ClockDataset::compare(best, cur) {
                 BmcaOrder::ABetter | BmcaOrder::Same => best,
                 BmcaOrder::BBetter => cur,
-            }
-        })
+            })
     }
 }
 

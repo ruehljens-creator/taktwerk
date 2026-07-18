@@ -11,17 +11,19 @@
 //! Algorithmen, die dahinter laufen.
 //!
 //! ## Module
-//! - [`rtp`]  — RTP-Header + L24/L16-Payload (Pack/Depack)
-//! - [`sdp`]  — SDP fuer AES67/ST2110-30 Level A (Build/Parse)
-//! - [`sap`]  — SAP-Announce/-Parse (Session Announcement Protocol)  *(Skeleton)*
-//! - [`ptp`]  — IEEE-1588-Datentypen + BMCA-Zustand                  *(Skeleton)*
-//! - [`dsp`]  — ASRC / Clock-Recovery-Servo                          *(Skeleton)*
+//! - [`rtp`]   — RTP-Header + L24/L16-Payload (Pack/Depack)
+//! - [`sdp`]   — SDP fuer AES67/ST2110-30 Level A (Build/Parse)
+//! - [`sap`]   — SAP-Announce/-Parse (Session Announcement Protocol)
+//! - [`ptp`]   — IEEE-1588-Datentypen + BMCA-Zustand
+//! - [`dsp`]   — ASRC / Clock-Recovery-Servo
+//! - [`clock`] — [`clock::TimeSource`]-Naht: Media-Clock/RTP-Timestamps
 
-pub mod rtp;
-pub mod sdp;
-pub mod sap;
-pub mod ptp;
+pub mod clock;
 pub mod dsp;
+pub mod ptp;
+pub mod rtp;
+pub mod sap;
+pub mod sdp;
 
 /// Das gemeinsame Zielprofil des MVP: AES67-Pflichtbasis == ST-2110-30 Level A.
 /// Sendeseitig konservativ auf diese Werte festgelegt (§7.1 des Projektbriefs).
@@ -98,7 +100,7 @@ mod tests {
     fn level_a_frames_and_payload() {
         let p = StreamProfile::level_a(8);
         assert_eq!(p.frames_per_packet(), 48); // 48 kHz * 1 ms
-        // 48 Frames * 8 ch * 3 Byte (L24) = 1152 Byte
+                                               // 48 Frames * 8 ch * 3 Byte (L24) = 1152 Byte
         assert_eq!(p.payload_bytes(), 1152);
     }
 

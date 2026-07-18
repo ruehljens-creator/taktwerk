@@ -135,7 +135,11 @@ pub fn encode_payload(samples: &[i32], enc: Encoding, out: &mut [u8]) -> Result<
 /// Dekodiert big-endian-PCM zurueck in i32-Samples (linksbuendig: das Nutzsignal
 /// steht in den oberen Bits, untere Bits 0). So bleibt der Wertebereich ueber
 /// L16/L24/L32 konsistent und ASRC/DSP rechnet einheitlich.
-pub fn decode_payload(payload: &[u8], enc: Encoding, out: &mut Vec<i32>) -> Result<usize, RtpError> {
+pub fn decode_payload(
+    payload: &[u8],
+    enc: Encoding,
+    out: &mut Vec<i32>,
+) -> Result<usize, RtpError> {
     let bps = enc.bytes_per_sample();
     if payload.len() % bps != 0 {
         return Err(RtpError::RaggedPayload);

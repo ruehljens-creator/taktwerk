@@ -93,18 +93,18 @@ impl RtpSender {
             timestamp: self.timestamp,
             ssrc: self.ssrc,
         };
-        header
-            .write(&mut self.packet)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        header.write(&mut self.packet).map_err(io::Error::other)?;
         let payload_len = rtp::encode_payload(
             chunk,
             self.profile.encoding,
             &mut self.packet[RTP_HEADER_MIN_LEN..],
         )
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        .map_err(io::Error::other)?;
 
         let total = RTP_HEADER_MIN_LEN + payload_len;
-        self.socket.send_to(&self.packet[..total], self.dest).await?;
+        self.socket
+            .send_to(&self.packet[..total], self.dest)
+            .await?;
 
         // Zustand fortschreiben: Sequence +1 (wrap), Timestamp += Frames/Paket.
         self.sequence = self.sequence.wrapping_add(1);

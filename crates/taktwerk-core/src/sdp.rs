@@ -68,20 +68,12 @@ impl AudioSession {
             encoding,
         } = self.profile;
         let ptime_ms = ptime_us as f64 / 1000.0;
-        let rtpmap = format!(
-            "{}/{}/{}",
-            encoding.rtpmap_name(),
-            sample_rate,
-            channels
-        );
+        let rtpmap = format!("{}/{}/{}", encoding.rtpmap_name(), sample_rate, channels);
 
         let mut s = String::with_capacity(512);
         s.push_str("v=0\r\n");
         // o=<user> <sess-id> <sess-version> IN IP4 <unicast>
-        s.push_str(&format!(
-            "o=- 0 0 IN IP4 {}\r\n",
-            self.origin_unicast
-        ));
+        s.push_str(&format!("o=- 0 0 IN IP4 {}\r\n", self.origin_unicast));
         s.push_str(&format!("s={}\r\n", self.session_name));
         s.push_str(&format!("c=IN IP4 {}/32\r\n", self.multicast_addr));
         s.push_str("t=0 0\r\n");
@@ -148,9 +140,7 @@ impl AudioSession {
                     if it.next() != Some("audio") {
                         continue; // andere Medienart ignorieren
                     }
-                    port = it
-                        .next()
-                        .and_then(|p| p.parse().ok());
+                    port = it.next().and_then(|p| p.parse().ok());
                     // Proto ueberspringen
                     let _ = it.next();
                     payload_type = it.next().and_then(|p| p.parse().ok());
@@ -167,8 +157,7 @@ impl AudioSession {
         }
 
         let port = port.ok_or(SdpError::Missing("m=audio"))?;
-        let (pt, encoding, sample_rate, channels) =
-            rtpmap.ok_or(SdpError::Missing("a=rtpmap"))?;
+        let (pt, encoding, sample_rate, channels) = rtpmap.ok_or(SdpError::Missing("a=rtpmap"))?;
         let payload_type = payload_type.unwrap_or(pt);
         let multicast_addr = media_conn
             .or(session_conn)
@@ -322,10 +311,7 @@ mod tests {
     fn parse_missing_media_errors() {
         let sdp = "v=0\r\ns=Nothing\r\nt=0 0\r\n";
         // Ohne m=audio-Zeile fehlt zuerst der Port.
-        assert_eq!(
-            AudioSession::parse(sdp),
-            Err(SdpError::Missing("m=audio"))
-        );
+        assert_eq!(AudioSession::parse(sdp), Err(SdpError::Missing("m=audio")));
     }
 
     #[test]

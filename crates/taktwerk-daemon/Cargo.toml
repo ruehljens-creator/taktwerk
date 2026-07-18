@@ -1,0 +1,24 @@
+[package]
+name = "taktwerk-daemon"
+description = "Control-Plane-Daemon: REST-API (Axum) + SAP-Discovery + Endpoint-Streaming"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "taktwerkd"
+path = "src/main.rs"
+
+[dependencies]
+taktwerk-core = { path = "../taktwerk-core" }
+taktwerk-audio = { path = "../taktwerk-audio" }
+taktwerk-net = { path = "../taktwerk-net" }
+taktwerk-endpoint = { path = "../taktwerk-endpoint" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

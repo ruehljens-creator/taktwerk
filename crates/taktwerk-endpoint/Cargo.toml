@@ -1,0 +1,19 @@
+[package]
+name = "taktwerk-endpoint"
+description = "Media-Loop des AES67-Endpunkts: Capture→RTP-Send und RTP-Recv→Playback"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+taktwerk-core = { path = "../taktwerk-core" }
+taktwerk-audio = { path = "../taktwerk-audio" }
+taktwerk-net = { path = "../taktwerk-net" }
+tokio = { version = "1", features = ["net", "rt", "time", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "time", "sync"] }
+
+[lints]
+workspace = true

@@ -48,12 +48,31 @@ taktwerk-core       reiner AES67/ST2110-Protokoll- + DSP-Kern (0 OS-Deps)
   ├─ sdp            SDP Build/Parse (Level A) inkl. RFC-7273-Clock-Referenz
   ├─ sap            SAP-Announce/-Parse (RFC 2974)
   ├─ ptp            IEEE-1588-Datentypen + BMCA (Best Master Clock)
-  └─ dsp            ASRC/Clock-Recovery-Servo (PI-Regler)
+  ├─ dsp            ASRC/Clock-Recovery-Servo (PI-Regler)
+  └─ clock          TimeSource-Naht (Media-Clock/RTP-Timestamps)
 taktwerk-audio      OS-Naht: AudioBackend-Trait + NullBackend (headless)
                     + per-OS-Backends (Feature-gated, ab Phase 1)
+taktwerk-net        Multicast-UDP-Sockets + RtpSender/RtpReceiver + SAP-Discovery
+                    (tokio + socket2); Beispiele: multicast_selftest, sap_selftest
+taktwerk-endpoint   Media-Loop: TxStream (Capture→RTP) + RxStream (RTP→Playback)
+taktwerk-daemon     Bin `taktwerkd`: REST-API (Axum) + SAP-Discovery + TX-Streaming
 
-geplant: taktwerk-net · taktwerk-discovery · taktwerk-ptp
-         taktwerk-router · taktwerk-daemon (Axum-REST + IPC) · Web-UI (React)
+geplant: taktwerk-router (NMOS IS-04/05) · taktwerk-ptp (PTP-Wire) · Web-UI (React)
+```
+
+## Node starten (headless, Phase 0)
+
+```bash
+cargo run -p taktwerk-daemon            # startet `taktwerkd`, REST auf 127.0.0.1:7788
+# Konfiguration über Env:
+#   TAKTWERK_NAME=mynode TAKTWERK_IFACE=192.168.1.10 TAKTWERK_HTTP=127.0.0.1:7788 TAKTWERK_CH=2
+
+curl localhost:7788/health
+curl localhost:7788/node
+curl -X POST localhost:7788/streams/tx/start -H 'content-type: application/json' -d '{"channels":2}'
+curl localhost:7788/streams/tx           # {"running":true,"packets_sent":...}
+curl localhost:7788/streams/discovered   # per SAP entdeckte Streams
+curl -X POST localhost:7788/streams/tx/stop
 ```
 
 ---

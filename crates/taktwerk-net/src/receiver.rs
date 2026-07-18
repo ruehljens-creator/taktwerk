@@ -65,8 +65,12 @@ impl RtpReceiver {
         let (header, payload_off) = RtpHeader::parse(datagram)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         let mut samples = Vec::new();
-        rtp::decode_payload(&datagram[payload_off..], self.profile.encoding, &mut samples)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        rtp::decode_payload(
+            &datagram[payload_off..],
+            self.profile.encoding,
+            &mut samples,
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(ReceivedPacket {
             header,
             from,
@@ -109,17 +113,19 @@ mod tests {
         let sent = tx.send_block(&block).await.unwrap();
         assert_eq!(sent, 1);
 
-        let pkt =
-            tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
-                .await
-                .expect("timeout: kein Paket empfangen")
-                .expect("recv-Fehler");
+        let pkt = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timeout: kein Paket empfangen")
+            .expect("recv-Fehler");
 
         assert_eq!(pkt.header.payload_type, 97);
         assert_eq!(pkt.header.sequence, 0);
         assert_eq!(pkt.header.timestamp, 1000);
         assert_eq!(pkt.header.ssrc, 0x1234_5678);
-        assert_eq!(pkt.frames(profile.channels), profile.frames_per_packet() as usize);
+        assert_eq!(
+            pkt.frames(profile.channels),
+            profile.frames_per_packet() as usize
+        );
         assert_eq!(pkt.samples, block);
 
         // Sender-Zustand ist fortgeschritten.

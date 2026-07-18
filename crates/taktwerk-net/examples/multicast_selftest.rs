@@ -35,12 +35,7 @@ async fn run() -> std::io::Result<()> {
     let cfg = MulticastConfig::new(group, port).with_interface(iface);
     println!(
         "Gruppe {}:{}  Interface {}  Profil {}ch/{}Hz/{}us",
-        group,
-        port,
-        iface,
-        profile.channels,
-        profile.sample_rate,
-        profile.ptime_us
+        group, port, iface, profile.channels, profile.sample_rate, profile.ptime_us
     );
 
     // Empfaenger zuerst (Join), dann Sender mit aktiviertem Multicast-Loopback.

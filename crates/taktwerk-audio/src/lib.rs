@@ -103,8 +103,8 @@ impl AudioBackend for NullBackend {
 
     fn write_playback(&mut self, samples: &[i32]) -> Result<(), AudioError> {
         let ch = self.profile.channels as u64;
-        if ch > 0 {
-            self.frames_written += samples.len() as u64 / ch;
+        if let Some(frames) = (samples.len() as u64).checked_div(ch) {
+            self.frames_written += frames;
         }
         Ok(())
     }
