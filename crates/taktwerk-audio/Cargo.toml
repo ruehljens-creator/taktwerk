@@ -8,20 +8,27 @@ license.workspace = true
 
 [dependencies]
 taktwerk-core = { path = "../taktwerk-core" }
+tracing = { workspace = true }
+# cpal: portable Audio-I/O (WASAPI · CoreAudio · ALSA), reines Rust, MIT/Apache.
+# Optional & feature-gated, damit der NullBackend/headless-Pfad ohne OS-Audio baut.
+cpal = { version = "0.15", optional = true }
 
-# Per-OS-Backends werden spaeter als optionale Dependencies mit target-cfg
-# eingezogen, z. B.:
-#   [target.'cfg(target_os = "macos")'.dependencies]
-#   coreaudio-sys = "..."     # BlackHole-Anbindung (Phase 1)
-#   [target.'cfg(target_os = "linux")'.dependencies]
-#   pipewire = "..."          # virtuelle Node / snd-aloop (Phase 1)
 # Der NullBackend (headless) braucht nichts davon und baut auf jeder Plattform.
+# CpalBackend deckt echte Ein-/Ausgabegeraete ab; BlackHole/PipeWire (virtuelles
+# Geraet als virtuelle Soundkarte) folgen als eigene Backends.
 
 [features]
 default = []
-# Aktiviert das jeweilige Geraete-Backend (erst ab Phase 1 mit Inhalt gefuellt).
+# Portables Echt-Geraete-Backend via cpal (Phase 1).
+cpal-backend = ["dep:cpal"]
+# Platzhalter fuer die virtuellen-Soundkarten-Backends.
 macos-blackhole = []
 linux-pipewire = []
+
+# Das Geraete-Beispiel braucht das cpal-Feature (sonst nicht bauen).
+[[example]]
+name = "audio_devices"
+required-features = ["cpal-backend"]
 
 [lints]
 workspace = true

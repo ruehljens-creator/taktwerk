@@ -108,6 +108,23 @@ TAKTWERK_LOG="info,taktwerk_net=trace" cargo run -p taktwerk-daemon   # + per-Pa
 Default: eigene Crates `debug`, Fremd-Crates `info`. Per-Paket-Details liegen auf
 `trace`. Die Datei wird beim **graceful Shutdown (Ctrl-C)** vollständig geflusht.
 
+## Echtes Audiogerät (Phase 1, optional)
+
+Standardmäßig ist der Node **headless** (kein Audiogerät, `NullBackend`). Mit dem
+`cpal`-Feature nutzt er ein echtes Ein-/Ausgabegerät (WASAPI · CoreAudio · ALSA):
+
+```bash
+cargo run -p taktwerk-daemon --features cpal   # dann via Env aktivieren:
+TAKTWERK_AUDIO=cpal cargo run -p taktwerk-daemon --features cpal
+# Geräte auflisten:
+cargo run -p taktwerk-audio --features cpal-backend --example audio_devices
+```
+
+TX nimmt dann vom Standard-Eingabegerät auf, RX spielt aufs Standard-Ausgabegerät.
+*(Linux braucht `libasound2-dev` zum Bauen des Features.)* Die **virtuelle
+Soundkarte** (BlackHole/PipeWire, damit Pro Tools ein AES67-Gerät sieht) ist der
+nächste Audio-Baustein.
+
 ## Node starten (headless, Phase 0)
 
 ```bash

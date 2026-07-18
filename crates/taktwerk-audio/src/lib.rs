@@ -19,6 +19,11 @@
 
 use taktwerk_core::StreamProfile;
 
+#[cfg(feature = "cpal-backend")]
+pub mod cpal_backend;
+#[cfg(feature = "cpal-backend")]
+pub use cpal_backend::{list_devices, CpalBackend};
+
 /// Fehler beim Oeffnen/Betreiben eines Audio-Backends.
 #[derive(Debug)]
 pub enum AudioError {
@@ -124,6 +129,30 @@ pub fn open_default(profile: StreamProfile) -> Result<Box<dyn AudioBackend>, Aud
         // return backends::linux::PipeWireBackend::open(profile).map(...);
     }
     Ok(Box::new(NullBackend::new(profile)))
+}
+
+/// Öffnet ein Backend für die gewünschten Richtungen. Wenn `use_device` gesetzt
+/// **und** das `cpal-backend`-Feature aktiv ist, wird ein echtes Gerät versucht;
+/// gelingt das nicht (kein Gerät), fällt es sauber auf [`NullBackend`] zurück.
+/// Ohne Feature/`use_device` immer headless — der Standardpfad bleibt unberührt.
+pub fn open(
+    profile: StreamProfile,
+    _capture: bool,
+    _playback: bool,
+    use_device: bool,
+) -> Box<dyn AudioBackend> {
+    #[cfg(feature = "cpal-backend")]
+    if use_device {
+        match CpalBackend::new(profile, _capture, _playback) {
+            Ok(b) => {
+                tracing::info!(ch = profile.channels, "cpal-Audiogerät geöffnet");
+                return Box::new(b);
+            }
+            Err(e) => tracing::warn!("cpal-Gerät nicht verfügbar ({e}) — NullBackend"),
+        }
+    }
+    let _ = use_device;
+    Box::new(NullBackend::new(profile))
 }
 
 #[cfg(test)]

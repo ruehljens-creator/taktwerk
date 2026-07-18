@@ -5,7 +5,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use taktwerk_audio::NullBackend;
+/// true, wenn ein echtes Audiogerät genutzt werden soll (`TAKTWERK_AUDIO=cpal`).
+fn audio_device() -> bool {
+    std::env::var("TAKTWERK_AUDIO")
+        .map(|v| v.eq_ignore_ascii_case("cpal"))
+        .unwrap_or(false)
+}
 use taktwerk_core::sdp::{AudioSession, PtpRefClock};
 use taktwerk_core::StreamProfile;
 use taktwerk_endpoint::{RxStream, TxStream};
@@ -149,8 +154,9 @@ pub fn start_tx(
     let announcer = SapAnnouncer::new(sap_sock, iface, &session);
 
     // Media-Clock aus dem State (System oder PTP-gelockt) für den Start-Timestamp.
+    // Capture aus echtem Gerät, wenn TAKTWERK_AUDIO=cpal (sonst Stille/headless).
     let mut tx = TxStream::new(
-        Box::new(NullBackend::new(profile)),
+        taktwerk_audio::open(profile, true, false, audio_device()),
         media_sock,
         dest,
         profile,
@@ -232,7 +238,9 @@ pub fn start_rx(
     // Traffic-Kanal: RxStream meldet (Quelle, Bytes) je Paket; ein Drain-Task
     // verbucht sie in den Monitor. Endet automatisch, wenn RxStream droppt.
     let (traffic_tx, mut traffic_rx) = tokio::sync::mpsc::unbounded_channel();
-    let rx = RxStream::new(receiver, Box::new(NullBackend::new(profile))).with_traffic(traffic_tx);
+    // Playback auf echtes Gerät, wenn TAKTWERK_AUDIO=cpal (sonst headless).
+    let backend = taktwerk_audio::open(profile, false, true, audio_device());
+    let rx = RxStream::new(receiver, backend).with_traffic(traffic_tx);
     let mon = monitor.clone();
     tokio::spawn(async move {
         while let Some((from, bytes)) = traffic_rx.recv().await {

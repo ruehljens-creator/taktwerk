@@ -25,5 +25,10 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 
+[features]
+default = []
+# Echt-Audiogeraet (cpal) verfuegbar machen; zur Laufzeit via TAKTWERK_AUDIO=cpal.
+cpal = ["taktwerk-audio/cpal-backend"]
+
 [lints]
 workspace = true
