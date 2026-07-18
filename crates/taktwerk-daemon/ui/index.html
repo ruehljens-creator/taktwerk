@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Taktwerk — AES67 Node</title>
+<style>
+  :root {
+    --bg: #14171c; --panel: #1c2129; --panel2: #232a34; --line: #2e3742;
+    --fg: #e6ebf0; --muted: #8a97a6; --accent: #4aa3ff; --ok: #37c871; --off: #6b7686; --warn: #e0603a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--off); display: inline-block; }
+  header .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  main { max-width: 1040px; margin: 0 auto; padding: 22px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .panel.wide { grid-column: 1 / -1; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--muted); margin: 0 0 12px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+  .kv b { color: var(--muted); font-weight: 500; }
+  .status { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+  .status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--off); }
+  .status.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  input { background: var(--panel2); border: 1px solid var(--line); color: var(--fg);
+    border-radius: 7px; padding: 7px 9px; font: inherit; width: 130px; }
+  input.small { width: 74px; }
+  button { background: var(--accent); color: #06121f; border: 0; border-radius: 7px;
+    padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button:active { transform: translateY(1px); }
+  .big { font-size: 26px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  tr.clk { cursor: pointer; }
+  tr.clk:hover { background: var(--panel2); }
+  .muted { color: var(--muted); }
+  .err { color: var(--warn); min-height: 18px; font-size: 13px; margin-top: 8px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="livedot"></span>
+  <h1>Taktwerk</h1>
+  <span class="sub" id="subtitle">AES67 Node</span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Knoten</h2>
+    <div class="kv" id="node">
+      <b>Name</b><span id="n-name">—</span>
+      <b>Interface</b><span id="n-iface">—</span>
+      <b>Profil</b><span id="n-profile">—</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Discovery (SAP)</h2>
+    <div id="disc-empty" class="muted">Noch keine Streams entdeckt.</div>
+    <table id="disc-table" style="display:none">
+      <thead><tr><th>Name</th><th>Gruppe</th><th>ch</th><th>Quelle</th></tr></thead>
+      <tbody id="disc-body"></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Senden (TX)</h2>
+    <div class="status" id="tx-status"><span class="dot"></span><span id="tx-state">aus</span></div>
+    <div class="big"><span id="tx-packets">0</span> <span class="muted" style="font-size:13px">Pakete</span></div>
+    <div class="muted" id="tx-dest"></div>
+    <div class="row">
+      <input id="tx-group" value="239.69.83.67" />
+      <input id="tx-port" class="small" value="5004" />
+      <input id="tx-ch" class="small" value="2" />
+    </div>
+    <div class="row">
+      <button id="tx-start">Start</button>
+      <button id="tx-stop" class="ghost">Stop</button>
+    </div>
+    <div class="err" id="tx-err"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Empfangen (RX)</h2>
+    <div class="status" id="rx-status"><span class="dot"></span><span id="rx-state">aus</span></div>
+    <div class="big"><span id="rx-packets">0</span> <span class="muted" style="font-size:13px">Pakete</span></div>
+    <div class="muted" id="rx-src"></div>
+    <div class="row">
+      <input id="rx-group" value="239.69.83.67" />
+      <input id="rx-port" class="small" value="5004" />
+      <input id="rx-ch" class="small" value="2" />
+    </div>
+    <div class="row">
+      <button id="rx-sub">Abonnieren</button>
+      <button id="rx-unsub" class="ghost">Beenden</button>
+    </div>
+    <div class="err" id="rx-err"></div>
+  </section>
+
+  <section class="panel wide">
+    <h2>APIs</h2>
+    <div class="muted">REST: diese Oberfläche · NMOS IS-04/IS-05 auf eigenem Port
+      (<span id="nmos-hint">…/x-nmos/</span>).</div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+async function jget(u) { const r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); }
+async function jpost(u, body) {
+  const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw new Error((await r.text()) || r.status);
+  return r.json();
+}
+function setStatus(el, on, txt) { el.classList.toggle("on", on); el.querySelector("span:last-child").textContent = txt; }
+
+async function refresh() {
+  try {
+    const [node, tx, rx, disc] = await Promise.all([
+      jget("/node"), jget("/streams/tx"), jget("/streams/rx"), jget("/streams/discovered"),
+    ]);
+    $("livedot").classList.add("live");
+    $("n-name").textContent = node.name;
+    $("subtitle").textContent = "AES67 Node · " + node.name;
+    $("n-iface").textContent = node.interface;
+    $("n-profile").textContent = `${node.profile.channels} ch · ${node.profile.sample_rate} Hz · ${node.profile.encoding} · ${node.profile.ptime_us} µs`;
+
+    setStatus($("tx-status"), tx.running, tx.running ? "läuft" : "aus");
+    $("tx-packets").textContent = tx.packets_sent.toLocaleString("de");
+    $("tx-dest").textContent = tx.dest ? "→ " + tx.dest : "";
+
+    setStatus($("rx-status"), rx.running, rx.running ? "läuft" : "aus");
+    $("rx-packets").textContent = rx.packets_recv.toLocaleString("de");
+    $("rx-src").textContent = rx.source ? "← " + rx.source : "";
+
+    const body = $("disc-body"); body.innerHTML = "";
+    if (disc.length === 0) { $("disc-empty").style.display = ""; $("disc-table").style.display = "none"; }
+    else {
+      $("disc-empty").style.display = "none"; $("disc-table").style.display = "";
+      for (const d of disc) {
+        const tr = document.createElement("tr"); tr.className = "clk";
+        tr.innerHTML = `<td>${d.session_name}</td><td>${d.multicast_addr}:${d.port}</td><td>${d.channels}</td><td>${d.source}</td>`;
+        tr.onclick = () => { $("rx-group").value = d.multicast_addr; $("rx-port").value = d.port; $("rx-ch").value = d.channels; };
+        body.appendChild(tr);
+      }
+    }
+  } catch (e) { $("livedot").classList.remove("live"); }
+}
+
+$("tx-start").onclick = async () => { $("tx-err").textContent = "";
+  try { await jpost("/streams/tx/start", { group: $("tx-group").value, port: +$("tx-port").value, channels: +$("tx-ch").value }); refresh(); }
+  catch (e) { $("tx-err").textContent = e.message; } };
+$("tx-stop").onclick = async () => { try { await jpost("/streams/tx/stop"); refresh(); } catch (e) { $("tx-err").textContent = e.message; } };
+$("rx-sub").onclick = async () => { $("rx-err").textContent = "";
+  try { await jpost("/streams/rx/subscribe", { group: $("rx-group").value, port: +$("rx-port").value, channels: +$("rx-ch").value }); refresh(); }
+  catch (e) { $("rx-err").textContent = e.message; } };
+$("rx-unsub").onclick = async () => { try { await jpost("/streams/rx/unsubscribe"); refresh(); } catch (e) { $("rx-err").textContent = e.message; } };
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

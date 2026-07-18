@@ -55,10 +55,19 @@ taktwerk-audio      OS-Naht: AudioBackend-Trait + NullBackend (headless)
 taktwerk-net        Multicast-UDP-Sockets + RtpSender/RtpReceiver + SAP-Discovery
                     (tokio + socket2); Beispiele: multicast_selftest, sap_selftest
 taktwerk-endpoint   Media-Loop: TxStream (Capture→RTP) + RxStream (RTP→Playback)
-taktwerk-daemon     Bin `taktwerkd`: REST-API (Axum) + SAP-Discovery + TX-Streaming
+taktwerk-router     NMOS IS-04 Node-API + IS-05 Connection-API (Axum)
+taktwerk-daemon     Bin `taktwerkd`: REST-API + Web-UI + SAP-Discovery + TX/RX +
+                    NMOS-Server; core::ptp: Wire-Format + Servo + PtpTimeSource
 
-geplant: taktwerk-router (NMOS IS-04/05) · taktwerk-ptp (PTP-Wire) · Web-UI (React)
+Interop verifiziert: RTP L24 gegen GStreamer (beide Richtungen), PTP gegen
+linuxptp `ptp4l`. Geplant: React-Ausbau der UI · Audiogeräte-Backends (Phase 1).
 ```
+
+## Web-UI
+
+Der Daemon liefert unter `http://<TAKTWERK_HTTP>/` eine Bedien-Oberfläche
+(Knoten-Status, TX/RX-Steuerung mit Live-Zählern, SAP-Discovery). Die
+NMOS-APIs liegen auf `TAKTWERK_NMOS` (Default `127.0.0.1:7789`) unter `/x-nmos/`.
 
 ## Node starten (headless, Phase 0)
 

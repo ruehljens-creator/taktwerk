@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::Html;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
@@ -98,6 +99,11 @@ pub struct RxSubscribeRequest {
 }
 
 // ---------- Handler ----------
+
+/// Die eingebettete Web-Oberfläche (statisch, spricht die REST-API gleicher Herkunft an).
+pub async fn ui() -> Html<&'static str> {
+    Html(include_str!("../ui/index.html"))
+}
 
 pub async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok", "node": state.node.name }))

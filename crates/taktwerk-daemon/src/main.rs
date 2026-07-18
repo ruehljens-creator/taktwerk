@@ -77,6 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let app = Router::new()
+        .route("/", get(handlers::ui))
+        .route("/ui", get(handlers::ui))
         .route("/health", get(handlers::health))
         .route("/node", get(handlers::node))
         .route("/streams/discovered", get(handlers::discovered))
