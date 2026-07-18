@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use taktwerk_core::StreamProfile;
 
 use crate::state::AppState;
-use crate::tasks::{start_tx, TxParams};
+use crate::tasks::{start_rx, start_tx, TxParams};
 
 // ---------- DTOs ----------
 
@@ -73,6 +73,24 @@ pub struct TxStatusDto {
 pub struct TxStartRequest {
     /// Multicast-Gruppe, Default 239.69.83.67.
     pub group: Option<String>,
+    /// Port, Default 5004.
+    pub port: Option<u16>,
+    /// Kanäle (Level A: ≤8), Default 2.
+    pub channels: Option<u8>,
+}
+
+#[derive(Serialize)]
+pub struct RxStatusDto {
+    pub running: bool,
+    pub source: Option<String>,
+    pub channels: u8,
+    pub packets_recv: u64,
+}
+
+#[derive(Deserialize)]
+pub struct RxSubscribeRequest {
+    /// Multicast-Gruppe des zu empfangenden Streams (Pflicht).
+    pub group: String,
     /// Port, Default 5004.
     pub port: Option<u16>,
     /// Kanäle (Level A: ≤8), Default 2.
@@ -190,5 +208,68 @@ fn current_tx_status(state: &AppState) -> TxStatusDto {
         dest: tx.dest.clone(),
         channels: tx.channels,
         packets_sent: tx.packets.load(Ordering::Relaxed),
+    }
+}
+
+pub async fn rx_status(State(state): State<AppState>) -> Json<RxStatusDto> {
+    Json(current_rx_status(&state))
+}
+
+pub async fn rx_subscribe(
+    State(state): State<AppState>,
+    Json(req): Json<RxSubscribeRequest>,
+) -> Result<Json<RxStatusDto>, (StatusCode, String)> {
+    let group: Ipv4Addr = req
+        .group
+        .parse()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "ungültige group-Adresse".into()))?;
+    let port = req.port.unwrap_or(5004);
+    let channels = req.channels.unwrap_or(2);
+    if channels == 0 || channels > 8 {
+        return Err((StatusCode::BAD_REQUEST, "channels muss 1..=8 sein".into()));
+    }
+
+    let mut rx = state.rx.lock().unwrap();
+    if rx.running {
+        return Err((StatusCode::CONFLICT, "RX-Abonnement läuft bereits".into()));
+    }
+
+    let profile = StreamProfile::level_a(channels);
+    let (shutdown, packets, handle) = start_rx(state.node.interface, group, port, profile)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    rx.running = true;
+    rx.source = Some(format!("{group}:{port}"));
+    rx.channels = channels;
+    rx.packets = packets;
+    rx.shutdown = Some(shutdown);
+    rx.handle = Some(handle);
+    drop(rx);
+
+    Ok(Json(current_rx_status(&state)))
+}
+
+pub async fn rx_unsubscribe(State(state): State<AppState>) -> Json<RxStatusDto> {
+    let (shutdown, handle) = {
+        let mut rx = state.rx.lock().unwrap();
+        rx.running = false;
+        (rx.shutdown.take(), rx.handle.take())
+    };
+    if let Some(s) = shutdown {
+        let _ = s.send(true);
+    }
+    if let Some(h) = handle {
+        let _ = h.await;
+    }
+    Json(current_rx_status(&state))
+}
+
+fn current_rx_status(state: &AppState) -> RxStatusDto {
+    let rx = state.rx.lock().unwrap();
+    RxStatusDto {
+        running: rx.running,
+        source: rx.source.clone(),
+        channels: rx.channels,
+        packets_recv: rx.packets.load(Ordering::Relaxed),
     }
 }

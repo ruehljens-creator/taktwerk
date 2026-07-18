@@ -9,9 +9,10 @@ use taktwerk_audio::NullBackend;
 use taktwerk_core::clock::SystemTimeSource;
 use taktwerk_core::sdp::{AudioSession, PtpRefClock};
 use taktwerk_core::StreamProfile;
-use taktwerk_endpoint::TxStream;
+use taktwerk_endpoint::{RxStream, TxStream};
 use taktwerk_net::{
-    bind_sap_announcer, bind_sap_listener, bind_sender, MulticastConfig, SapAnnouncer, SapListener,
+    bind_receiver, bind_sap_announcer, bind_sap_listener, bind_sender, MulticastConfig,
+    RtpReceiver, SapAnnouncer, SapListener,
 };
 use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
@@ -163,5 +164,33 @@ pub fn start_tx(
         println!("[tx] gestoppt nach {} Paketen", tx.packets_sent());
     });
 
+    Ok((shutdown_tx, packets, handle))
+}
+
+/// Startet ein RX-Abonnement: tritt der Multicast-Gruppe bei und empfängt den
+/// Stream in ein (headless) Backend. Gibt (Shutdown, Live-Zähler, Handle) zurück.
+pub fn start_rx(
+    iface: Ipv4Addr,
+    group: Ipv4Addr,
+    port: u16,
+    profile: StreamProfile,
+) -> std::io::Result<(
+    watch::Sender<bool>,
+    Arc<AtomicU64>,
+    tokio::task::JoinHandle<()>,
+)> {
+    let mcfg = MulticastConfig::new(group, port).with_interface(iface);
+    let sock = bind_receiver(&mcfg)?;
+    let receiver = RtpReceiver::new(sock, profile);
+    let rx = RxStream::new(receiver, Box::new(NullBackend::new(profile)));
+
+    let packets = rx.packet_counter();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let handle = tokio::spawn(async move {
+        if let Err(e) = rx.run(shutdown_rx).await {
+            eprintln!("[rx] Empfangs-Fehler: {e}");
+        }
+        println!("[rx] Abonnement beendet");
+    });
     Ok((shutdown_tx, packets, handle))
 }

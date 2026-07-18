@@ -56,6 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/streams/tx", get(handlers::tx_status))
         .route("/streams/tx/start", post(handlers::tx_start))
         .route("/streams/tx/stop", post(handlers::tx_stop))
+        .route("/streams/rx", get(handlers::rx_status))
+        .route("/streams/rx/subscribe", post(handlers::rx_subscribe))
+        .route("/streams/rx/unsubscribe", post(handlers::rx_unsubscribe))
         .with_state(app_state);
 
     println!("taktwerkd \"{name}\" — REST auf http://{http}  (Interface {iface})");

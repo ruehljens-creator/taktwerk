@@ -1,6 +1,8 @@
 //! RxStream — RTP-Recv → Playback.
 
 use std::io;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use taktwerk_audio::AudioBackend;
 use taktwerk_net::RtpReceiver;
@@ -9,11 +11,13 @@ use tokio::sync::watch;
 use crate::audio_err;
 
 /// Empfangs-Strom: nimmt RTP-Pakete entgegen und schreibt die dekodierten
-/// Samples ins Audio-Backend (Netz → Playback).
+/// Samples ins Audio-Backend (Netz → Playback). Der Paketzähler ist ein
+/// `Arc<AtomicU64>`, damit ihn Aufrufer (z. B. der Daemon für REST-Status)
+/// live mitlesen können, während [`RxStream::run`] die Struktur besitzt.
 pub struct RxStream {
     receiver: RtpReceiver,
     backend: Box<dyn AudioBackend>,
-    packets_recv: u64,
+    packets_recv: Arc<AtomicU64>,
 }
 
 impl RxStream {
@@ -21,13 +25,18 @@ impl RxStream {
         Self {
             receiver,
             backend,
-            packets_recv: 0,
+            packets_recv: Arc::new(AtomicU64::new(0)),
         }
     }
 
     /// Anzahl bisher empfangener/gespielter Pakete.
     pub fn packets_recv(&self) -> u64 {
-        self.packets_recv
+        self.packets_recv.load(Ordering::Relaxed)
+    }
+
+    /// Teilbarer Live-Paketzähler (für externe Statusabfragen).
+    pub fn packet_counter(&self) -> Arc<AtomicU64> {
+        self.packets_recv.clone()
     }
 
     /// Empfängt genau ein Paket und schreibt es ins Backend.
@@ -36,7 +45,7 @@ impl RxStream {
         self.backend
             .write_playback(&pkt.samples)
             .map_err(audio_err)?;
-        self.packets_recv += 1;
+        self.packets_recv.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -47,7 +56,7 @@ impl RxStream {
                 pkt = self.receiver.recv() => {
                     let pkt = pkt?;
                     self.backend.write_playback(&pkt.samples).map_err(audio_err)?;
-                    self.packets_recv += 1;
+                    self.packets_recv.fetch_add(1, Ordering::Relaxed);
                 }
                 res = shutdown.changed() => {
                     if res.is_err() || *shutdown.borrow() {

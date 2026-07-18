@@ -42,12 +42,24 @@ pub struct TxControl {
     pub handle: Option<JoinHandle<()>>,
 }
 
+/// Steuerzustand des Empfangs-Stroms (RX-Abonnement).
+#[derive(Default)]
+pub struct RxControl {
+    pub running: bool,
+    pub source: Option<String>,
+    pub channels: u8,
+    pub packets: Arc<AtomicU64>,
+    pub shutdown: Option<watch::Sender<bool>>,
+    pub handle: Option<JoinHandle<()>>,
+}
+
 /// Der von allen Handlern geteilte App-Zustand.
 #[derive(Clone)]
 pub struct AppState {
     pub node: Arc<NodeInfo>,
     pub discovered: Arc<Mutex<HashMap<u16, DiscoveredEntry>>>,
     pub tx: Arc<Mutex<TxControl>>,
+    pub rx: Arc<Mutex<RxControl>>,
 }
 
 impl AppState {
@@ -56,6 +68,7 @@ impl AppState {
             node: Arc::new(node),
             discovered: Arc::new(Mutex::new(HashMap::new())),
             tx: Arc::new(Mutex::new(TxControl::default())),
+            rx: Arc::new(Mutex::new(RxControl::default())),
         }
     }
 }

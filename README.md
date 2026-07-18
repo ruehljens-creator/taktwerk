@@ -72,6 +72,11 @@ curl localhost:7788/node
 curl -X POST localhost:7788/streams/tx/start -H 'content-type: application/json' -d '{"channels":2}'
 curl localhost:7788/streams/tx           # {"running":true,"packets_sent":...}
 curl localhost:7788/streams/discovered   # per SAP entdeckte Streams
+
+# Einen Stream empfangen (abonnieren):
+curl -X POST localhost:7788/streams/rx/subscribe -H 'content-type: application/json' -d '{"group":"239.69.83.67","port":5004,"channels":2}'
+curl localhost:7788/streams/rx           # {"running":true,"packets_recv":...}
+curl -X POST localhost:7788/streams/rx/unsubscribe
 curl -X POST localhost:7788/streams/tx/stop
 ```
 
