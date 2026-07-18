@@ -11,6 +11,11 @@ fn audio_device() -> bool {
         .map(|v| v.eq_ignore_ascii_case("cpal"))
         .unwrap_or(false)
 }
+
+/// Optionaler Gerätename aus einer Env-Var (leer/ungesetzt → None = Default-Gerät).
+fn audio_name(var: &str) -> Option<String> {
+    std::env::var(var).ok().filter(|s| !s.trim().is_empty())
+}
 use taktwerk_core::sdp::{AudioSession, PtpRefClock};
 use taktwerk_core::StreamProfile;
 use taktwerk_endpoint::{RxStream, TxStream};
@@ -156,7 +161,16 @@ pub fn start_tx(
     // Media-Clock aus dem State (System oder PTP-gelockt) für den Start-Timestamp.
     // Capture aus echtem Gerät, wenn TAKTWERK_AUDIO=cpal (sonst Stille/headless).
     let mut tx = TxStream::new(
-        taktwerk_audio::open(profile, true, false, audio_device()),
+        taktwerk_audio::open_with(
+            profile,
+            true,
+            false,
+            audio_device(),
+            taktwerk_audio::DeviceSelection {
+                capture: audio_name("TAKTWERK_AUDIO_IN"),
+                playback: None,
+            },
+        ),
         media_sock,
         dest,
         profile,
@@ -239,7 +253,16 @@ pub fn start_rx(
     // verbucht sie in den Monitor. Endet automatisch, wenn RxStream droppt.
     let (traffic_tx, mut traffic_rx) = tokio::sync::mpsc::unbounded_channel();
     // Playback auf echtes Gerät, wenn TAKTWERK_AUDIO=cpal (sonst headless).
-    let backend = taktwerk_audio::open(profile, false, true, audio_device());
+    let backend = taktwerk_audio::open_with(
+        profile,
+        false,
+        true,
+        audio_device(),
+        taktwerk_audio::DeviceSelection {
+            capture: None,
+            playback: audio_name("TAKTWERK_AUDIO_OUT"),
+        },
+    );
     let rx = RxStream::new(receiver, backend).with_traffic(traffic_tx);
     let mon = monitor.clone();
     tokio::spawn(async move {

@@ -54,6 +54,62 @@ pub fn list_devices() -> (Vec<String>, Vec<String>) {
     )
 }
 
+/// Lesbarer Richtungsname für Fehlermeldungen.
+fn dir_label(input: bool) -> &'static str {
+    if input {
+        "Eingabegerät"
+    } else {
+        "Ausgabegerät"
+    }
+}
+
+/// Wählt ein cpal-Gerät für die Richtung aus.
+///
+/// - `name == None` → Default-Gerät der Richtung.
+/// - `name == Some(x)` → erst **exakter** (case-insensitiver) Namenstreffer,
+///   sonst erster **Teilstring**-Treffer (z. B. `"Pro Tools"` findet
+///   „Pro Tools Audio Bridge 2-A"). Kein Treffer ist ein **Fehler** (der
+///   Aufrufer entscheidet dann bewusst über einen Fallback) — so landet eine
+///   gezielte Gerätewahl nie stillschweigend auf dem falschen (Default-)Gerät.
+fn pick_device(host: &cpal::Host, name: Option<&str>, input: bool) -> Result<cpal::Device, String> {
+    let want = match name {
+        None => {
+            return if input {
+                host.default_input_device()
+            } else {
+                host.default_output_device()
+            }
+            .ok_or_else(|| format!("kein {}", dir_label(input)));
+        }
+        Some(w) => w,
+    };
+
+    let devices: Vec<cpal::Device> = if input {
+        host.input_devices()
+    } else {
+        host.output_devices()
+    }
+    .map_err(|e| e.to_string())?
+    .collect();
+
+    // 1) exakter Treffer (case-insensitiv)
+    if let Some(d) = devices
+        .iter()
+        .find(|d| d.name().is_ok_and(|n| n.eq_ignore_ascii_case(want)))
+    {
+        return Ok(d.clone());
+    }
+    // 2) Teilstring (case-insensitiv)
+    let want_low = want.to_lowercase();
+    if let Some(d) = devices
+        .iter()
+        .find(|d| d.name().is_ok_and(|n| n.to_lowercase().contains(&want_low)))
+    {
+        return Ok(d.clone());
+    }
+    Err(format!("kein {} mit Name ~ \"{want}\"", dir_label(input)))
+}
+
 /// Echt-Geräte-Backend. `capture`/`playback` wählen die genutzten Richtungen.
 pub struct CpalBackend {
     profile: StreamProfile,
@@ -65,9 +121,23 @@ pub struct CpalBackend {
 }
 
 impl CpalBackend {
-    /// Öffnet die Default-Geräte für die gewünschten Richtungen. Schlägt fehl
+    /// Öffnet die **Default**-Geräte für die gewünschten Richtungen. Schlägt fehl
     /// (→ Aufrufer kann auf `NullBackend` zurückfallen), wenn kein Gerät da ist.
     pub fn new(profile: StreamProfile, capture: bool, playback: bool) -> Result<Self, AudioError> {
+        Self::with_devices(profile, capture, playback, None, None)
+    }
+
+    /// Wie [`Self::new`], aber mit **gezielter Gerätewahl per Name**
+    /// (`capture_name`/`playback_name`, siehe [`pick_device`]). `None` = Default.
+    /// Damit lässt sich z. B. „Pro Tools Audio Bridge" als AES67↔DAW-Brücke
+    /// wählen, statt das System-Default-Mikrofon zu nehmen.
+    pub fn with_devices(
+        profile: StreamProfile,
+        capture: bool,
+        playback: bool,
+        capture_name: Option<String>,
+        playback_name: Option<String>,
+    ) -> Result<Self, AudioError> {
         let capture_buf = Arc::new(Mutex::new(VecDeque::<i32>::new()));
         let playback_buf = Arc::new(Mutex::new(VecDeque::<i32>::new()));
         let frames_written = Arc::new(AtomicU64::new(0));
@@ -82,7 +152,7 @@ impl CpalBackend {
         // Streams im eigenen Thread bauen & am Leben halten (cpal-Streams !Send).
         let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
         let thread = std::thread::spawn(move || {
-            match build_streams(profile, capture, playback, cb, pb, fw) {
+            match build_streams(profile, capture, playback, capture_name, playback_name, cb, pb, fw) {
                 Ok(streams) => {
                     let _ = ready_tx.send(Ok(()));
                     while !st.load(Ordering::Relaxed) {
@@ -158,10 +228,13 @@ impl AudioBackend for CpalBackend {
 }
 
 /// Baut die gewünschten cpal-Streams (im cpal-Thread aufzurufen).
+#[allow(clippy::too_many_arguments)]
 fn build_streams(
     profile: StreamProfile,
     capture: bool,
     playback: bool,
+    capture_name: Option<String>,
+    playback_name: Option<String>,
     capture_buf: Arc<Mutex<VecDeque<i32>>>,
     playback_buf: Arc<Mutex<VecDeque<i32>>>,
     _frames_written: Arc<AtomicU64>,
@@ -177,9 +250,8 @@ fn build_streams(
     let err_cb = |e| tracing::warn!("cpal-Stream-Fehler: {e}");
 
     if capture {
-        let dev = host
-            .default_input_device()
-            .ok_or_else(|| "kein Eingabegerät".to_string())?;
+        let dev = pick_device(&host, capture_name.as_deref(), true)?;
+        tracing::info!(dev = dev.name().unwrap_or_default(), "cpal Capture-Gerät");
         let fmt = dev
             .default_input_config()
             .map_err(|e| e.to_string())?
@@ -222,9 +294,8 @@ fn build_streams(
     }
 
     if playback {
-        let dev = host
-            .default_output_device()
-            .ok_or_else(|| "kein Ausgabegerät".to_string())?;
+        let dev = pick_device(&host, playback_name.as_deref(), false)?;
+        tracing::info!(dev = dev.name().unwrap_or_default(), "cpal Playback-Gerät");
         let fmt = dev
             .default_output_config()
             .map_err(|e| e.to_string())?
@@ -285,5 +356,21 @@ mod tests {
     fn max_samples_is_one_second() {
         let p = StreamProfile::level_a(2);
         assert_eq!(max_samples(&p), 96_000);
+    }
+
+    #[test]
+    fn dir_label_reads_naturally() {
+        assert_eq!(dir_label(true), "Eingabegerät");
+        assert_eq!(dir_label(false), "Ausgabegerät");
+    }
+
+    #[test]
+    fn pick_device_unknown_name_is_error() {
+        // Ein absichtlich unmöglicher Name darf nie ein (falsches) Default-Gerät
+        // liefern — gezielte Wahl schlägt sichtbar fehl statt still daneben.
+        let host = cpal::default_host();
+        let ok = pick_device(&host, Some("::kein-solches-gerät-4711::"), true)
+            .map(|d| d.name().unwrap_or_default());
+        assert!(ok.is_err(), "unbekannter Name müsste Err sein, war {ok:?}");
     }
 }

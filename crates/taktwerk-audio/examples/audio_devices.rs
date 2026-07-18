@@ -2,6 +2,13 @@
 //! Playback), um zu zeigen, dass die Streams auf echter Hardware laufen.
 //!
 //!   cargo run -p taktwerk-audio --features cpal-backend --example audio_devices
+//!
+//! Optional gezielt ein Gerät per Name wählen (exakt oder Teilstring),
+//! z. B. die Pro-Tools-Bridge als AES67↔DAW-Gerät:
+//!
+//!   ... --example audio_devices -- "Pro Tools Audio Bridge 2" "Pro Tools Audio Bridge 2"
+//!
+//! Argument 1 = Aufnahmegerät, Argument 2 = Wiedergabegerät (fehlt eins → Default).
 
 use taktwerk_audio::{list_devices, AudioBackend, CpalBackend};
 use taktwerk_core::StreamProfile;
@@ -17,8 +24,19 @@ fn main() {
         println!("  · {d}");
     }
 
+    // Optionale Gerätenamen aus der Kommandozeile.
+    let mut args = std::env::args().skip(1);
+    let cap_name = args.next().filter(|s| !s.is_empty());
+    let play_name = args.next().filter(|s| !s.is_empty());
+    if let Some(n) = &cap_name {
+        println!("→ Aufnahmegerät gewählt: \"{n}\"");
+    }
+    if let Some(n) = &play_name {
+        println!("→ Wiedergabegerät gewählt: \"{n}\"");
+    }
+
     let profile = StreamProfile::level_a(2);
-    match CpalBackend::new(profile, true, true) {
+    match CpalBackend::with_devices(profile, true, true, cap_name, play_name) {
         Ok(mut be) => {
             println!(
                 "cpal-Backend geöffnet: {} · {}ch/{}Hz",

@@ -131,19 +131,43 @@ pub fn open_default(profile: StreamProfile) -> Result<Box<dyn AudioBackend>, Aud
     Ok(Box::new(NullBackend::new(profile)))
 }
 
-/// Öffnet ein Backend für die gewünschten Richtungen. Wenn `use_device` gesetzt
-/// **und** das `cpal-backend`-Feature aktiv ist, wird ein echtes Gerät versucht;
-/// gelingt das nicht (kein Gerät), fällt es sauber auf [`NullBackend`] zurück.
-/// Ohne Feature/`use_device` immer headless — der Standardpfad bleibt unberührt.
+/// Gewünschtes Audiogerät je Richtung. `None` = Standard-Gerät der Plattform;
+/// `Some(name)` wählt gezielt per Name (exakt, sonst Teilstring — z. B.
+/// „Pro Tools Audio Bridge"). Nur relevant mit `use_device` + `cpal-backend`.
+#[derive(Debug, Default, Clone)]
+pub struct DeviceSelection {
+    /// Aufnahmegerät (TX: DAW → Netz).
+    pub capture: Option<String>,
+    /// Wiedergabegerät (RX: Netz → DAW).
+    pub playback: Option<String>,
+}
+
+/// Öffnet ein Backend für die gewünschten Richtungen mit Standard-Geräten.
+/// Bequemer Wrapper um [`open_with`] ohne gezielte Gerätewahl.
 pub fn open(
+    profile: StreamProfile,
+    capture: bool,
+    playback: bool,
+    use_device: bool,
+) -> Box<dyn AudioBackend> {
+    open_with(profile, capture, playback, use_device, DeviceSelection::default())
+}
+
+/// Öffnet ein Backend für die gewünschten Richtungen. Wenn `use_device` gesetzt
+/// **und** das `cpal-backend`-Feature aktiv ist, wird ein echtes Gerät versucht
+/// (ggf. per Name aus `sel` gewählt); gelingt das nicht, fällt es sauber auf
+/// [`NullBackend`] zurück. Ohne Feature/`use_device` immer headless — der
+/// Standardpfad bleibt unberührt.
+pub fn open_with(
     profile: StreamProfile,
     _capture: bool,
     _playback: bool,
     use_device: bool,
+    _sel: DeviceSelection,
 ) -> Box<dyn AudioBackend> {
     #[cfg(feature = "cpal-backend")]
     if use_device {
-        match CpalBackend::new(profile, _capture, _playback) {
+        match CpalBackend::with_devices(profile, _capture, _playback, _sel.capture, _sel.playback) {
             Ok(b) => {
                 tracing::info!(ch = profile.channels, "cpal-Audiogerät geöffnet");
                 return Box::new(b);

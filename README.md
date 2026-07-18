@@ -121,6 +121,18 @@ cargo run -p taktwerk-audio --features cpal-backend --example audio_devices
 ```
 
 TX nimmt dann vom Standard-Eingabegerät auf, RX spielt aufs Standard-Ausgabegerät.
+Ein **bestimmtes Gerät per Name** wählt man über `TAKTWERK_AUDIO_IN` (Aufnahme)
+und `TAKTWERK_AUDIO_OUT` (Wiedergabe) — exakter oder Teilstring-Treffer, z. B. die
+Pro-Tools-Bridge als AES67↔DAW-Gerät:
+
+```bash
+TAKTWERK_AUDIO=cpal TAKTWERK_AUDIO_IN="Pro Tools Audio Bridge 2" \
+  cargo run -p taktwerk-daemon --features cpal
+# Gerätewahl auch im Beispiel testbar (Arg1=Aufnahme, Arg2=Wiedergabe):
+cargo run -p taktwerk-audio --features cpal-backend --example audio_devices -- \
+  "Pro Tools Audio Bridge 2" "Pro Tools Audio Bridge 2"
+```
+
 *(Linux braucht `libasound2-dev` zum Bauen des Features.)* Die **virtuelle
 Soundkarte** (BlackHole/PipeWire, damit Pro Tools ein AES67-Gerät sieht) ist der
 nächste Audio-Baustein.
