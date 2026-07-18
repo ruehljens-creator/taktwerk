@@ -56,12 +56,23 @@ taktwerk-net        Multicast-UDP-Sockets + RtpSender/RtpReceiver + SAP-Discover
                     (tokio + socket2); Beispiele: multicast_selftest, sap_selftest
 taktwerk-endpoint   Media-Loop: TxStream (Capture→RTP) + RxStream (RTP→Playback)
 taktwerk-router     NMOS IS-04 Node-API + IS-05 Connection-API (Axum)
-taktwerk-daemon     Bin `taktwerkd`: REST-API + Web-UI + SAP-Discovery + TX/RX +
-                    NMOS-Server; core::ptp: Wire-Format + Servo + PtpTimeSource
+taktwerk-discovery  RAVENNA: mDNS/DNS-SD (browse+register) + RTSP (DESCRIBE)
+taktwerk-daemon     Bin `taktwerkd`: REST-API + Web-UI + SAP/RAVENNA-Discovery +
+                    TX/RX + NMOS + RTSP-Server + PTP-Slave; core::ptp: Wire +
+                    BMCA + Servo + Slave + PtpTimeSource
 
-Interop verifiziert: RTP L24 gegen GStreamer (beide Richtungen), PTP gegen
-linuxptp `ptp4l`. Geplant: React-Ausbau der UI · Audiogeräte-Backends (Phase 1).
+Interop verifiziert: RTP L24 ↔ GStreamer (beide Richtungen), PTP-Slave lockt an
+linuxptp `ptp4l`-Grandmaster, RAVENNA-mDNS+RTSP-Discovery. RAVENNA-kompatibel
+(Medien/Timing/Discovery). Geplant: React-UI · Audiogeräte-Backends (Phase 1).
 ```
+
+## RAVENNA
+
+Taktwerk unterstützt RAVENNA explizit: gemeinsame Medien-/Timing-Basis (RTP L24,
+PTP, SDP/RFC 7273) plus RAVENNAs Discovery-Weg — **mDNS/DNS-SD** (Sessions finden
+und den eigenen Stream anbieten, `_ravenna_session._sub._rtsp._tcp`) und **RTSP
+`DESCRIBE`** (SDP holen/liefern). Mit `TAKTWERK_PTP_SLAVE=1` lockt der Knoten an
+den PTP-Grandmaster und richtet seine Media-Clock danach aus (`GET /ptp`).
 
 ## Web-UI
 

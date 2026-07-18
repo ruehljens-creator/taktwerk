@@ -73,9 +73,7 @@ async fn run() -> std::io::Result<()> {
                             println!("Follow_Up #{followups}: seq={} preciseTs={}ns", f.header.sequence_id, f.timestamp.total_nanos());
                         }
                     }
-                    PtpMessage::Other(h) => {
-                        let _ = h;
-                    }
+                    PtpMessage::DelayResp(_) | PtpMessage::Other(_) => {}
                 }
             }
         }

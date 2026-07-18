@@ -51,13 +51,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 7789)));
+    let ptp_slave = std::env::var("TAKTWERK_PTP_SLAVE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     let node = NodeInfo {
         name: name.clone(),
         interface: iface,
         profile: StreamProfile::level_a(channels),
+        ptp_slave,
     };
-    let app_state = AppState::new(node);
+    let mut app_state = AppState::new(node);
+
+    // PTP-Slave optional: an den Grandmaster locken und die Media-Clock darauf
+    // ausrichten (PtpTimeSource). Der Guard hält den Slave am Leben.
+    let _ptp_guard = if ptp_slave && !iface.is_unspecified() {
+        let pts =
+            taktwerk_core::ptp::servo::PtpTimeSource::new(taktwerk_core::clock::SystemTimeSource);
+        let offset_handle = pts.offset_handle();
+        app_state.clock = std::sync::Arc::new(pts);
+        let identity = clock_identity_from(&name);
+        match taktwerk_net::PtpSlave::bind(iface, identity, offset_handle, app_state.ptp.clone()) {
+            Ok(slave) => {
+                let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+                tokio::spawn(async move {
+                    let _ = slave.run(stop_rx).await;
+                });
+                info!(%iface, "PTP-Slave aktiv (Lock an Grandmaster)");
+                Some(stop_tx)
+            }
+            Err(e) => {
+                error!("PTP-Slave-Start fehlgeschlagen: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Hintergrund-Tasks: SAP-Discovery, PTP-Monitor, Traffic-Raten-Ticker.
     tokio::spawn(tasks::discovery_task(iface, app_state.clone()));
@@ -109,6 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/node", get(handlers::node))
         .route("/devices", get(handlers::devices))
         .route("/traffic", get(handlers::traffic))
+        .route("/ptp", get(handlers::ptp))
         .route("/streams/discovered", get(handlers::discovered))
         .route("/streams/tx", get(handlers::tx_status))
         .route("/streams/tx/start", post(handlers::tx_start))
@@ -124,6 +155,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+/// Leitet eine (deterministische) PTP-Clock-Identity aus dem Knotennamen ab.
+/// EUI-64-Form mit gesetztem „locally administered"-Bit; stabil pro Name.
+fn clock_identity_from(name: &str) -> [u8; 8] {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in name.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let mut id = h.to_be_bytes();
+    id[0] = (id[0] & 0xfe) | 0x02; // unicast + locally administered
+    id
 }
 
 /// Beendet den Server sauber bei Ctrl-C.

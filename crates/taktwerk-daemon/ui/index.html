@@ -66,7 +66,17 @@
   </section>
 
   <section class="panel">
-    <h2>Discovery (SAP)</h2>
+    <h2>PTP-Sync</h2>
+    <div class="status" id="ptp-status"><span class="dot"></span><span id="ptp-state">aus</span></div>
+    <div class="kv" style="margin-top:10px">
+      <b>Offset</b><span id="ptp-offset">—</span>
+      <b>Pfad-Verz.</b><span id="ptp-delay">—</span>
+      <b>Grandmaster</b><span id="ptp-gm">—</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Discovery (SAP + RAVENNA)</h2>
     <div id="disc-empty" class="muted">Noch keine Streams entdeckt.</div>
     <table id="disc-table" style="display:none">
       <thead><tr><th>Name</th><th>Via</th><th>Gruppe</th><th>ch</th><th>Quelle</th></tr></thead>
@@ -185,12 +195,18 @@ function renderDevices(devs) {
 
 async function refresh() {
   try {
-    const [node, tx, rx, disc, devs, traffic] = await Promise.all([
+    const [node, tx, rx, disc, devs, traffic, ptp] = await Promise.all([
       jget("/node"), jget("/streams/tx"), jget("/streams/rx"), jget("/streams/discovered"),
-      jget("/devices"), jget("/traffic"),
+      jget("/devices"), jget("/traffic"), jget("/ptp"),
     ]);
     renderTraffic(traffic);
     renderDevices(devs);
+
+    if (!ptp.enabled) { setStatus($("ptp-status"), false, "aus (System-Clock)"); }
+    else { setStatus($("ptp-status"), ptp.synced, ptp.synced ? "gelockt" : "sucht Master…"); }
+    $("ptp-offset").textContent = ptp.enabled ? `${ptp.offset_ns.toLocaleString("de")} ns` : "—";
+    $("ptp-delay").textContent = ptp.enabled ? `${ptp.path_delay_ns.toLocaleString("de")} ns` : "—";
+    $("ptp-gm").textContent = ptp.grandmaster || "—";
     $("livedot").classList.add("live");
     $("n-name").textContent = node.name;
     $("subtitle").textContent = "AES67 Node · " + node.name;

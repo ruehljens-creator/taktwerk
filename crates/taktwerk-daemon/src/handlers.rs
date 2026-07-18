@@ -132,6 +132,24 @@ pub async fn traffic(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(state.monitor.lock().unwrap().traffic_json())
 }
 
+/// PTP-Slave-Status (Lock, Offset, Pfad-Verzögerung, Grandmaster).
+pub async fn ptp(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let st = state.ptp.lock().unwrap().clone();
+    let gm = st.grandmaster.map(|id| {
+        id.iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(":")
+    });
+    Json(serde_json::json!({
+        "enabled": state.node.ptp_slave,
+        "synced": st.synced,
+        "offset_ns": st.offset_ns,
+        "path_delay_ns": st.path_delay_ns,
+        "grandmaster": gm,
+    }))
+}
+
 pub async fn discovered(State(state): State<AppState>) -> Json<Vec<DiscoveredDto>> {
     let map = state.discovered.lock().unwrap();
     let mut list: Vec<DiscoveredDto> = map
@@ -192,6 +210,7 @@ pub async fn tx_start(
         payload_type: 97,
         ssrc: 0x5441_4B54, // "TAKT"
         node_name: state.node.name.clone(),
+        clock: state.clock.clone(),
     };
 
     let (shutdown, packets, handle) =

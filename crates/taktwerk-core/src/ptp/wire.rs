@@ -297,6 +297,64 @@ impl TimestampedMsg {
     }
 }
 
+/// Eine **Delay_Resp**-Nachricht: der Master timestampt den Empfang unseres
+/// Delay_Req und schickt `receiveTimestamp` (t4) + die anfragende PortIdentity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DelayResp {
+    pub header: PtpHeader,
+    /// t4 — Empfangszeit des Delay_Req beim Master.
+    pub receive_timestamp: PtpTimestamp,
+    /// PortIdentity, deren Delay_Req beantwortet wird (muss unsere sein).
+    pub requesting_port: PortIdentity,
+}
+
+impl DelayResp {
+    pub const LEN: usize = PTP_HEADER_LEN + PtpTimestamp::LEN + 10;
+
+    pub fn parse(b: &[u8]) -> Result<Self, PtpError> {
+        let header = PtpHeader::parse(b)?;
+        if header.message_type != MessageType::DelayResp {
+            return Err(PtpError::WrongType);
+        }
+        if b.len() < Self::LEN {
+            return Err(PtpError::TooShort);
+        }
+        let receive_timestamp = PtpTimestamp::parse(&b[34..44])?;
+        let mut clock_identity = [0u8; 8];
+        clock_identity.copy_from_slice(&b[44..52]);
+        Ok(Self {
+            header,
+            receive_timestamp,
+            requesting_port: PortIdentity {
+                clock_identity,
+                port: u16::from_be_bytes([b[52], b[53]]),
+            },
+        })
+    }
+}
+
+/// Baut eine **Delay_Req**-Nachricht (44 Byte). `origin_timestamp` darf 0 sein —
+/// der Master timestampt den Empfang selbst; entscheidend ist unsere lokale
+/// Sendezeit t3, die der Aufrufer separat festhält.
+pub fn build_delay_req(source: PortIdentity, sequence_id: u16) -> Result<[u8; 44], PtpError> {
+    let header = PtpHeader {
+        message_type: MessageType::DelayReq,
+        version: 2,
+        message_length: 44,
+        domain: 0,
+        flags: 0,
+        correction: 0,
+        source_port: source,
+        sequence_id,
+        control: 0x01,              // Delay_Req
+        log_message_interval: 0x7f, // per Spec für Delay_Req
+    };
+    let mut buf = [0u8; 44];
+    header.write(&mut buf)?;
+    // originTimestamp (10 Byte) bleibt 0.
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::BmcaOrder;
@@ -438,6 +496,58 @@ mod tests {
             ..ds
         };
         assert_eq!(ClockDataset::compare(&better, &ds), BmcaOrder::ABetter);
+    }
+
+    #[test]
+    fn delay_req_build_and_header_roundtrip() {
+        let src = PortIdentity {
+            clock_identity: [7; 8],
+            port: 1,
+        };
+        let buf = build_delay_req(src, 99).unwrap();
+        let h = PtpHeader::parse(&buf).unwrap();
+        assert_eq!(h.message_type, MessageType::DelayReq);
+        assert_eq!(h.sequence_id, 99);
+        assert_eq!(h.source_port, src);
+        assert_eq!(h.control, 0x01);
+    }
+
+    #[test]
+    fn delay_resp_parse() {
+        // Delay_Resp bauen: Header (Typ 0x9) + receiveTimestamp + requestingPort.
+        let mut buf = [0u8; DelayResp::LEN];
+        let h = PtpHeader {
+            message_type: MessageType::DelayResp,
+            version: 2,
+            message_length: DelayResp::LEN as u16,
+            domain: 0,
+            flags: 0,
+            correction: 0,
+            source_port: PortIdentity {
+                clock_identity: [0xAA; 8],
+                port: 1,
+            },
+            sequence_id: 99,
+            control: 0x03,
+            log_message_interval: 0x7f,
+        };
+        h.write(&mut buf[..PTP_HEADER_LEN]).unwrap();
+        PtpTimestamp {
+            seconds: 5,
+            nanos: 500,
+        }
+        .write(&mut buf[34..44])
+        .unwrap();
+        buf[44..52].copy_from_slice(&[7u8; 8]); // requesting clock identity
+        buf[52..54].copy_from_slice(&1u16.to_be_bytes());
+
+        let resp = DelayResp::parse(&buf).unwrap();
+        assert_eq!(resp.header.sequence_id, 99);
+        assert_eq!(
+            resp.receive_timestamp.total_nanos(),
+            5 * 1_000_000_000 + 500
+        );
+        assert_eq!(resp.requesting_port.clock_identity, [7u8; 8]);
     }
 
     #[test]

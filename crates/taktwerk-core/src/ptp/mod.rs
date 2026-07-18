@@ -11,6 +11,7 @@
 //! sie unterscheiden sich in Domain/Intervallen, nicht in der BMCA-Ordnung.
 
 pub mod servo;
+pub mod slave;
 pub mod wire;
 
 /// EUI-64 Clock-Identity.

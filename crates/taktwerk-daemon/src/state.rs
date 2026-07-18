@@ -6,7 +6,9 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use taktwerk_core::clock::{SystemTimeSource, TimeSource};
 use taktwerk_core::StreamProfile;
+use taktwerk_net::PtpSlaveStatus;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
@@ -18,6 +20,8 @@ pub struct NodeInfo {
     pub name: String,
     pub interface: Ipv4Addr,
     pub profile: StreamProfile,
+    /// Ob der PTP-Slave (Lock an Grandmaster) aktiviert ist.
+    pub ptp_slave: bool,
 }
 
 /// Ein entdeckter fremder Stream (per SAP oder RAVENNA/mDNS).
@@ -66,6 +70,11 @@ pub struct AppState {
     pub rx: Arc<Mutex<RxControl>>,
     /// Geräte- und Traffic-Monitor (SAP/PTP/RTP-Aggregation).
     pub monitor: Arc<Mutex<TrafficMonitor>>,
+    /// Media-Clock für RTP-Timestamps — SystemTimeSource oder (bei PTP-Slave)
+    /// eine PtpTimeSource, die an den Grandmaster gelockt ist.
+    pub clock: Arc<dyn TimeSource>,
+    /// Live-Status des PTP-Slaves (leer, wenn Slave nicht aktiv).
+    pub ptp: Arc<Mutex<PtpSlaveStatus>>,
 }
 
 impl AppState {
@@ -76,6 +85,8 @@ impl AppState {
             tx: Arc::new(Mutex::new(TxControl::default())),
             rx: Arc::new(Mutex::new(RxControl::default())),
             monitor: Arc::new(Mutex::new(TrafficMonitor::default())),
+            clock: Arc::new(SystemTimeSource),
+            ptp: Arc::new(Mutex::new(PtpSlaveStatus::default())),
         }
     }
 }

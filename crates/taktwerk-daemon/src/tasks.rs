@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use taktwerk_audio::NullBackend;
-use taktwerk_core::clock::SystemTimeSource;
 use taktwerk_core::sdp::{AudioSession, PtpRefClock};
 use taktwerk_core::StreamProfile;
 use taktwerk_endpoint::{RxStream, TxStream};
@@ -101,6 +100,8 @@ pub struct TxParams {
     pub payload_type: u8,
     pub ssrc: u32,
     pub node_name: String,
+    /// Media-Clock für den RTP-Start-Timestamp (System- oder PTP-gelockt).
+    pub clock: Arc<dyn taktwerk_core::clock::TimeSource>,
 }
 
 /// Startet den TX-Loop und gibt (Shutdown-Sender, Paketzähler, JoinHandle) zurück.
@@ -121,6 +122,7 @@ pub fn start_tx(
         payload_type,
         ssrc,
         node_name,
+        clock,
     } = params;
 
     let mcfg = MulticastConfig::new(group, port).with_interface(iface);
@@ -146,7 +148,7 @@ pub fn start_tx(
     };
     let announcer = SapAnnouncer::new(sap_sock, iface, &session);
 
-    let clock = SystemTimeSource;
+    // Media-Clock aus dem State (System oder PTP-gelockt) für den Start-Timestamp.
     let mut tx = TxStream::new(
         Box::new(NullBackend::new(profile)),
         media_sock,
@@ -154,7 +156,7 @@ pub fn start_tx(
         profile,
         payload_type,
         ssrc,
-        &clock,
+        clock.as_ref(),
     );
 
     let packets = Arc::new(AtomicU64::new(0));

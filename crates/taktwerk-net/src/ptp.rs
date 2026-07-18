@@ -11,11 +11,20 @@
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 
-use taktwerk_core::ptp::wire::{Announce, MessageType, PtpHeader, TimestampedMsg};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use taktwerk_core::ptp::slave::SlaveState;
+use taktwerk_core::ptp::wire::{
+    build_delay_req, Announce, DelayResp, MessageType, PortIdentity, PtpHeader, TimestampedMsg,
+};
 use taktwerk_core::ptp::ClockIdentity;
 use tokio::net::UdpSocket;
+use tokio::sync::watch;
+use tokio::time::{interval, Duration, MissedTickBehavior};
 
-use crate::multicast::{bind_receiver, MulticastConfig};
+use crate::multicast::{bind_receiver, bind_sender, MulticastConfig};
 
 /// PTP-Multicast-Adresse (primär) und Ports.
 pub const PTP_MULTICAST: &str = "224.0.1.129";
@@ -45,7 +54,8 @@ pub enum PtpMessage {
     Announce(Announce),
     Sync(TimestampedMsg),
     FollowUp(TimestampedMsg),
-    /// Anderer Typ (Delay_Resp, Management, …) — nur der Header.
+    DelayResp(DelayResp),
+    /// Anderer Typ (Management, Signaling, …) — nur der Header.
     Other(PtpHeader),
 }
 
@@ -56,6 +66,7 @@ impl PtpMessage {
             PtpMessage::Announce(_) => "Announce",
             PtpMessage::Sync(_) => "Sync",
             PtpMessage::FollowUp(_) => "Follow_Up",
+            PtpMessage::DelayResp(_) => "Delay_Resp",
             PtpMessage::Other(_) => "Other",
         }
     }
@@ -65,6 +76,7 @@ impl PtpMessage {
         match self {
             PtpMessage::Announce(a) => a.header.source_port.clock_identity,
             PtpMessage::Sync(m) | PtpMessage::FollowUp(m) => m.header.source_port.clock_identity,
+            PtpMessage::DelayResp(d) => d.header.source_port.clock_identity,
             PtpMessage::Other(h) => h.source_port.clock_identity,
         }
     }
@@ -131,7 +143,140 @@ fn classify(datagram: &[u8]) -> Option<PtpMessage> {
         MessageType::FollowUp => TimestampedMsg::parse(datagram)
             .ok()
             .map(PtpMessage::FollowUp),
+        MessageType::DelayResp => DelayResp::parse(datagram).ok().map(PtpMessage::DelayResp),
         _ => Some(PtpMessage::Other(header)),
+    }
+}
+
+/// TwoStep-Flag im PTP-Header (Sync mit two-step → Follow_Up folgt).
+const FLAG_TWO_STEP: u16 = 0x0200;
+
+/// Lokale Systemzeit in Nanosekunden (Software-Timestamp; gleiche Uhr wie
+/// `SystemTimeSource`, damit Offsets zu `PtpTimeSource` zusammenpassen).
+fn now_nanos() -> i128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as i128)
+        .unwrap_or(0)
+}
+
+/// Live-Status des PTP-Slaves (für Daemon/UI).
+#[derive(Debug, Clone, Default)]
+pub struct PtpSlaveStatus {
+    pub synced: bool,
+    pub offset_ns: i64,
+    pub path_delay_ns: i64,
+    /// Grandmaster-Clock-Identity (aus Announce), falls gesehen.
+    pub grandmaster: Option<ClockIdentity>,
+}
+
+/// PTP-**Slave**: lockt an den Grandmaster (Sync/Follow_Up + Delay_Req/Resp),
+/// füttert den Servo und schreibt den Offset in `offset_handle` (→ `PtpTimeSource`).
+pub struct PtpSlave {
+    listener: PtpListener,
+    send_sock: UdpSocket,
+    dest: std::net::SocketAddr,
+    our_identity: ClockIdentity,
+    state: SlaveState,
+    offset_handle: Arc<AtomicI64>,
+    status: Arc<Mutex<PtpSlaveStatus>>,
+    seq: u16,
+}
+
+impl PtpSlave {
+    /// Baut den Slave auf einem Interface. `our_identity` = eigene Clock-Identity;
+    /// `offset_handle` wird mit dem laufenden Offset (Slave−Master, ns) beschrieben.
+    pub fn bind(
+        iface: Ipv4Addr,
+        our_identity: ClockIdentity,
+        offset_handle: Arc<AtomicI64>,
+        status: Arc<Mutex<PtpSlaveStatus>>,
+    ) -> io::Result<Self> {
+        let listener = PtpListener::bind(iface)?;
+        let group: Ipv4Addr = PTP_MULTICAST.parse().unwrap();
+        let send_sock = bind_sender(
+            &MulticastConfig::new(group, PTP_EVENT_PORT).with_interface(iface),
+            true,
+        )?;
+        Ok(Self {
+            listener,
+            send_sock,
+            dest: std::net::SocketAddr::from((group, PTP_EVENT_PORT)),
+            our_identity,
+            state: SlaveState::new(0.1),
+            offset_handle,
+            status,
+            seq: 0,
+        })
+    }
+
+    fn publish(&self) {
+        let off = self.state.offset_ns();
+        self.offset_handle.store(off, Ordering::Relaxed);
+        let mut st = self.status.lock().unwrap();
+        st.synced = self.state.is_synced();
+        st.offset_ns = off;
+        st.path_delay_ns = self.state.path_delay_ns();
+    }
+
+    /// Läuft bis zum Shutdown: verarbeitet PTP-Nachrichten und sendet periodisch
+    /// Delay_Req, um die Pfad-Verzögerung zu bestimmen.
+    pub async fn run(mut self, mut shutdown: watch::Receiver<bool>) -> io::Result<()> {
+        let mut delay_tick = interval(Duration::from_secs(1));
+        delay_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                res = self.listener.recv() => {
+                    let (msg, _from, _bytes) = res?;
+                    match msg {
+                        PtpMessage::Announce(a) => {
+                            self.status.lock().unwrap().grandmaster = Some(a.gm_identity);
+                        }
+                        PtpMessage::Sync(m) => {
+                            let t2 = now_nanos();
+                            let two_step = (m.header.flags & FLAG_TWO_STEP) != 0;
+                            self.state.on_sync(
+                                m.header.sequence_id,
+                                m.timestamp.total_nanos() as i128,
+                                two_step,
+                                t2,
+                            );
+                            self.publish();
+                        }
+                        PtpMessage::FollowUp(m) => {
+                            self.state.on_follow_up(
+                                m.header.sequence_id,
+                                m.timestamp.total_nanos() as i128,
+                            );
+                            self.publish();
+                        }
+                        PtpMessage::DelayResp(d) => {
+                            let is_us = d.requesting_port.clock_identity == self.our_identity;
+                            self.state.on_delay_resp(
+                                d.header.sequence_id,
+                                is_us,
+                                d.receive_timestamp.total_nanos() as i128,
+                            );
+                            self.publish();
+                        }
+                        PtpMessage::Other(_) => {}
+                    }
+                }
+                _ = delay_tick.tick() => {
+                    let our_port = PortIdentity { clock_identity: self.our_identity, port: 1 };
+                    if let Ok(req) = build_delay_req(our_port, self.seq) {
+                        let t3 = now_nanos();
+                        self.state.on_delay_req_sent(self.seq, t3);
+                        let _ = self.send_sock.send_to(&req, self.dest).await;
+                        self.seq = self.seq.wrapping_add(1);
+                    }
+                }
+                r = shutdown.changed() => {
+                    if r.is_err() || *shutdown.borrow() { break; }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
