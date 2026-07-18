@@ -107,6 +107,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(mdns) => {
             tokio::spawn(ravenna::rtsp_server(rtsp_http, app_state.clone()));
             ravenna::advertise(&mdns, &name, iface, rtsp_http.port());
+            // Eigenen Node als NMOS-Node-API annoncieren (für die Kreuzschiene).
+            if !iface.is_unspecified() {
+                if let Err(e) = mdns.register_nmos_node(&name, &name, iface, nmos_http.port()) {
+                    error!("NMOS-Node-Advertise fehlgeschlagen: {e}");
+                }
+            }
+            tokio::spawn(routing::nmos_discovery_task(
+                app_state.clone(),
+                mdns.clone(),
+            ));
             tokio::spawn(ravenna::discovery_task(app_state.clone(), mdns));
         }
         Err(e) => error!("mDNS/RAVENNA nicht verfügbar: {e}"),

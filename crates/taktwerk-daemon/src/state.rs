@@ -28,6 +28,19 @@ pub struct NodeInfo {
     pub nmos_port: u16,
 }
 
+/// Ein per NMOS-mDNS (`_nmos-node._tcp`) entdeckter fremder Node und seine
+/// steuerbaren Receiver (für die Kreuzschiene).
+#[derive(Debug, Clone)]
+pub struct NmosPeer {
+    /// Host der NMOS-API (Node + Connection).
+    pub host: String,
+    /// Port der NMOS-API.
+    pub port: u16,
+    /// Receiver dieses Nodes: (receiver_id, label).
+    pub receivers: Vec<(String, String)>,
+    pub last_seen: u64,
+}
+
 /// Ein entdeckter fremder Stream (per SAP oder RAVENNA/mDNS).
 #[derive(Debug, Clone)]
 pub struct DiscoveredEntry {
@@ -81,6 +94,8 @@ pub struct AppState {
     pub clock: Arc<dyn TimeSource>,
     /// Live-Status des PTP-Slaves (leer, wenn Slave nicht aktiv).
     pub ptp: Arc<Mutex<PtpSlaveStatus>>,
+    /// Per NMOS-mDNS entdeckte fremde Nodes (Instanz → Peer), für die Matrix.
+    pub nmos_peers: Arc<Mutex<HashMap<String, NmosPeer>>>,
 }
 
 impl AppState {
@@ -93,6 +108,7 @@ impl AppState {
             monitor: Arc::new(Mutex::new(TrafficMonitor::default())),
             clock: Arc::new(SystemTimeSource),
             ptp: Arc::new(Mutex::new(PtpSlaveStatus::default())),
+            nmos_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

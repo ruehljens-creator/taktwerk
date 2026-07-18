@@ -14,7 +14,10 @@ use taktwerk_core::StreamProfile;
 use taktwerk_router::ids::uuid_from;
 use taktwerk_router::{controller, ReceiverControl};
 
-use crate::state::AppState;
+use taktwerk_discovery::MdnsDiscovery;
+use tracing::{debug, info, warn};
+
+use crate::state::{now_unix, AppState, NmosPeer};
 use crate::tasks::start_rx;
 
 /// Baut die SDP eines Streams aus Gruppe/Port/Kanälen.
@@ -119,17 +122,84 @@ pub async fn registry(State(state): State<AppState>) -> Json<Value> {
             }));
         }
     }
-    // Eigener Receiver (steuerbare Senke) mit NMOS-Koordinaten.
-    let receivers = json!([{
+    // Receiver-Spalten: eigener + alle per NMOS-mDNS entdeckten fremden Nodes.
+    let mut receivers = vec![json!({
         "id": uuid_from(&format!("{}:receiver", n.name)),
-        "name": n.name,
+        "name": format!("{} (self)", n.name),
         "nmos_host": n.nmos_host,
         "nmos_port": n.nmos_port,
         "connected": state.rx.lock().unwrap().running,
         "source": state.rx.lock().unwrap().source,
-    }]);
+    })];
+    {
+        let peers = state.nmos_peers.lock().unwrap();
+        for peer in peers.values() {
+            for (rid, label) in &peer.receivers {
+                receivers.push(json!({
+                    "id": rid,
+                    "name": label,
+                    "nmos_host": peer.host,
+                    "nmos_port": peer.port,
+                    "connected": false,
+                    "source": null,
+                    "last_seen": peer.last_seen,
+                }));
+            }
+        }
+    }
 
     Json(json!({ "senders": senders, "receivers": receivers }))
+}
+
+/// Browst NMOS-Node-APIs per mDNS und sammelt deren Receiver (IS-04) als
+/// steuerbare Ziele der Kreuzschiene. Der eigene Node wird übersprungen.
+pub async fn nmos_discovery_task(state: AppState, mdns: MdnsDiscovery) {
+    let mut rx = match mdns.browse_nmos_nodes() {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("NMOS-Node-Discovery nicht verfügbar: {e}");
+            return;
+        }
+    };
+    info!("NMOS-Node-Discovery (mDNS) aktiv");
+    while let Some(svc) = rx.recv().await {
+        // Eigenen Node überspringen.
+        if svc.port == state.node.nmos_port {
+            continue;
+        }
+        let host = svc
+            .addr
+            .map(|a| a.to_string())
+            .unwrap_or_else(|| svc.host.clone());
+        match taktwerk_router::controller::get_json(&host, svc.port, "/x-nmos/node/v1.3/receivers")
+            .await
+        {
+            Ok(body) => {
+                let recv: Vec<(String, String)> = serde_json::from_str::<Vec<Value>>(&body)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|r| {
+                        let id = r["id"].as_str()?.to_string();
+                        let label = r["label"].as_str().unwrap_or("").to_string();
+                        Some((id, label))
+                    })
+                    .collect();
+                if !recv.is_empty() {
+                    debug!(instance = %svc.instance, count = recv.len(), "NMOS-Node: Receiver übernommen");
+                    state.nmos_peers.lock().unwrap().insert(
+                        svc.instance.clone(),
+                        NmosPeer {
+                            host,
+                            port: svc.port,
+                            receivers: recv,
+                            last_seen: now_unix(),
+                        },
+                    );
+                }
+            }
+            Err(e) => debug!(%host, "IS-04-Receiver-Abfrage fehlgeschlagen: {e}"),
+        }
+    }
 }
 
 /// Request für `POST /route` — Koppelpunkt setzen/lösen.

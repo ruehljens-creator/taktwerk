@@ -14,5 +14,8 @@
 pub mod mdns;
 pub mod rtsp;
 
-pub use mdns::{MdnsDiscovery, RavennaSession, RAVENNA_SERVICE, RAVENNA_SUBTYPE};
+pub use mdns::{
+    MdnsDiscovery, RavennaSession, ResolvedService, NMOS_NODE_SERVICE, RAVENNA_SERVICE,
+    RAVENNA_SUBTYPE,
+};
 pub use rtsp::describe;

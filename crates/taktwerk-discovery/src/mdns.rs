@@ -8,6 +8,7 @@
 //! `mdns-sd` läuft in einem eigenen Thread; wir überbrücken seine Events per
 //! `tokio::mpsc` in die async-Welt des Daemons.
 
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
@@ -17,6 +18,18 @@ use tokio::sync::mpsc;
 pub const RAVENNA_SERVICE: &str = "_rtsp._tcp.local.";
 /// RAVENNA-Subtyp für Audio-Sessions.
 pub const RAVENNA_SUBTYPE: &str = "_ravenna_session._sub._rtsp._tcp.local.";
+/// DNS-SD-Typ für NMOS-Node-APIs (IS-04).
+pub const NMOS_NODE_SERVICE: &str = "_nmos-node._tcp.local.";
+
+/// Ein generisch aufgelöster mDNS-Dienst.
+#[derive(Debug, Clone)]
+pub struct ResolvedService {
+    pub instance: String,
+    pub host: String,
+    pub addr: Option<IpAddr>,
+    pub port: u16,
+    pub txt: HashMap<String, String>,
+}
 
 /// Eine per mDNS gefundene (oder von uns angebotene) RAVENNA-Session.
 #[derive(Debug, Clone)]
@@ -105,6 +118,69 @@ impl MdnsDiscovery {
     pub fn unregister(&self, instance: &str) -> Result<(), mdns_sd::Error> {
         let fullname = format!("{instance}.{RAVENNA_SUBTYPE}");
         self.daemon.unregister(&fullname).map(|_| ())
+    }
+
+    /// Generischer Browse für einen DNS-SD-Diensttyp; liefert je aufgelöstem
+    /// Dienst ein [`ResolvedService`].
+    pub fn browse_type(
+        &self,
+        service_type: &str,
+    ) -> Result<mpsc::UnboundedReceiver<ResolvedService>, mdns_sd::Error> {
+        let receiver = self.daemon.browse(service_type)?;
+        let (tx, rx) = mpsc::unbounded_channel();
+        std::thread::spawn(move || {
+            while let Ok(event) = receiver.recv() {
+                if let ServiceEvent::ServiceResolved(info) = event {
+                    let mut txt = HashMap::new();
+                    for p in info.get_properties().iter() {
+                        txt.insert(p.key().to_string(), p.val_str().to_string());
+                    }
+                    let svc = ResolvedService {
+                        instance: info.get_fullname().to_string(),
+                        host: info.get_hostname().trim_end_matches('.').to_string(),
+                        addr: info.get_addresses().iter().next().copied(),
+                        port: info.get_port(),
+                        txt,
+                    };
+                    if tx.send(svc).is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+        Ok(rx)
+    }
+
+    /// Browst NMOS-Node-APIs (`_nmos-node._tcp`).
+    pub fn browse_nmos_nodes(
+        &self,
+    ) -> Result<mpsc::UnboundedReceiver<ResolvedService>, mdns_sd::Error> {
+        self.browse_type(NMOS_NODE_SERVICE)
+    }
+
+    /// Registriert den eigenen Knoten als NMOS-Node-API (IS-04-Discovery).
+    pub fn register_nmos_node(
+        &self,
+        instance: &str,
+        host: &str,
+        addr: Ipv4Addr,
+        port: u16,
+    ) -> Result<(), mdns_sd::Error> {
+        let host_fqdn = format!("{host}.local.");
+        let props = [
+            ("api_proto", "http"),
+            ("api_ver", "v1.3"),
+            ("api_auth", "false"),
+        ];
+        let info = ServiceInfo::new(
+            NMOS_NODE_SERVICE,
+            instance,
+            &host_fqdn,
+            IpAddr::V4(addr),
+            port,
+            &props[..],
+        )?;
+        self.daemon.register(info)
     }
 }
 

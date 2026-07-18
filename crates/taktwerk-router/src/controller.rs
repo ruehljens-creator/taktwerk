@@ -42,6 +42,27 @@ fn staged_path(receiver_id: &str) -> String {
     format!("/x-nmos/connection/v1.1/single/receivers/{receiver_id}/staged")
 }
 
+/// Führt einen HTTP/1.1-`GET` aus und liefert den Response-Body (für IS-04:
+/// Sender-/Receiver-Listen einer fremden NMOS-Node-API abfragen).
+pub async fn get_json(host: &str, port: u16, path: &str) -> io::Result<String> {
+    let mut stream = TcpStream::connect((host, port)).await?;
+    let req = format!(
+        "GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(req.as_bytes()).await?;
+    let mut resp = Vec::with_capacity(2048);
+    stream.read_to_end(&mut resp).await?;
+    let text = String::from_utf8_lossy(&resp);
+    // Body = alles nach dem Header-Ende.
+    match text.split_once("\r\n\r\n") {
+        Some((_h, body)) => Ok(body.to_string()),
+        None => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "HTTP: kein Body",
+        )),
+    }
+}
+
 /// Führt einen HTTP/1.1-`PATCH` mit JSON-Body aus und liefert den Statuscode.
 async fn patch(host: &str, port: u16, path: &str, body: &str) -> io::Result<u16> {
     let mut stream = TcpStream::connect((host, port)).await?;
