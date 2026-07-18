@@ -1,0 +1,27 @@
+[package]
+name = "taktwerk-audio"
+description = "OS-Naht: virtuelles Audiogeraet hinter einem Trait (Headless + per-OS-Backends)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+taktwerk-core = { path = "../taktwerk-core" }
+
+# Per-OS-Backends werden spaeter als optionale Dependencies mit target-cfg
+# eingezogen, z. B.:
+#   [target.'cfg(target_os = "macos")'.dependencies]
+#   coreaudio-sys = "..."     # BlackHole-Anbindung (Phase 1)
+#   [target.'cfg(target_os = "linux")'.dependencies]
+#   pipewire = "..."          # virtuelle Node / snd-aloop (Phase 1)
+# Der NullBackend (headless) braucht nichts davon und baut auf jeder Plattform.
+
+[features]
+default = []
+# Aktiviert das jeweilige Geraete-Backend (erst ab Phase 1 mit Inhalt gefuellt).
+macos-blackhole = []
+linux-pipewire = []
+
+[lints]
+workspace = true

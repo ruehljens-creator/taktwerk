@@ -1,0 +1,15 @@
+[package]
+name = "taktwerk-core"
+description = "OS-neutraler AES67/ST2110-30-Protokoll- und DSP-Kern (RTP, SDP, SAP, PTP, ASRC)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# BEWUSST ohne Abhaengigkeiten: Der Kern soll auf jeder Plattform ohne OS- oder
+# Netz-Crates kompilieren (Portabilitaets-Garantie + schnelle Buildzeit). Sockets,
+# Tokio, mDNS etc. leben in den nachgelagerten OS-/Netz-Crates.
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+# Taktwerk — AES67-Node (multiplattform: Linux + macOS first-class, Windows kompiliert mit)
+#
+# Leitprinzip der Portabilitaet: Der gesamte Protokoll-/DSP-Kern (taktwerk-core)
+# ist OS-neutral und haengt von keiner Plattform-API ab. Alles OS-spezifische
+# (virtuelle Soundkarte, mDNS, PTP-Timestamping, Packaging) sitzt hinter Traits
+# in eigenen Crates und wird per cfg/Feature nur auf der jeweiligen Plattform
+# eingezogen. Ein Build auf einer OS zieht NIE die Backends der anderen OS herein.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/taktwerk-core",
+    "crates/taktwerk-audio",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = ""
+authors = ["Taktwerk"]
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1

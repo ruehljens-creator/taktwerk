@@ -1,0 +1,11 @@
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+# Multiplattform-Ziele. macOS ist arm64-only (Apple Silicon), Windows kompiliert
+# vorerst nur den portablen Kern + Router (kein virtuelles Geraet).
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
