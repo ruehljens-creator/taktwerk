@@ -49,6 +49,13 @@
   tr.clk:hover { background: var(--panel2); }
   .muted { color: var(--muted); }
   .err { color: var(--warn); min-height: 18px; font-size: 13px; margin-top: 8px; }
+  .clockface { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  .driftnum { font-variant-numeric: tabular-nums; }
+  .satrow { display: flex; align-items: flex-end; gap: 5px; height: 64px; margin-top: 12px; }
+  .satbar { width: 16px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .satbar .bar { width: 100%; background: var(--off); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .satbar.used .bar { background: var(--ok); }
+  .satbar .prn { font-size: 10px; color: var(--muted); }
   a { color: var(--accent); }
 </style>
 </head>
@@ -81,6 +88,28 @@
       <b data-i18n="l_delay">Pfad-Verz.</b><span id="ptp-delay">—</span>
       <b data-i18n="l_gm">Grandmaster</b><span id="ptp-gm">—</span>
     </div>
+  </section>
+
+  <section class="panel">
+    <h2 data-i18n="h_clock">Referenz-Uhr</h2>
+    <div class="clockface" id="clk-time">--:--:--</div>
+    <div class="muted" id="clk-date">—</div>
+    <div class="kv" style="margin-top:10px">
+      <b data-i18n="l_clk_ref">Referenz</b><span id="clk-ref">—</span>
+      <b data-i18n="l_drift">Drift</b><span class="driftnum" id="clk-drift">—</span>
+      <b data-i18n="l_drift48">@ 48 kHz</b><span class="driftnum" id="clk-drift-hz">—</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 data-i18n="h_gnss">GNSS / Satelliten</h2>
+    <div class="status" id="gnss-status"><span class="dot"></span><span id="gnss-state">—</span></div>
+    <div class="kv" style="margin-top:10px">
+      <b data-i18n="l_sats">Satelliten</b><span id="gnss-sats-n">—</span>
+      <b data-i18n="l_gnss_time">GNSS-Zeit</b><span id="gnss-time">—</span>
+    </div>
+    <div class="satrow" id="gnss-sats"></div>
+    <div class="muted" id="gnss-note" style="font-size:12px"></div>
   </section>
 
   <section class="panel">
@@ -196,6 +225,13 @@ const I18N = {
     route_failed: "Route fehlgeschlagen: ",
     apis_note: "REST: diese Oberfläche (/devices, /traffic, …) · NMOS IS-04/IS-05 auf eigenem Port unter /x-nmos/.",
     now: "jetzt", unit_s: " s", unit_min: " min", locale: "de-DE",
+    h_clock: "Referenz-Uhr", h_gnss: "GNSS / Satelliten",
+    l_clk_ref: "Referenz", l_drift: "Drift", l_drift48: "@ 48 kHz",
+    l_sats: "Satelliten", l_gnss_time: "GNSS-Zeit",
+    ref_master: "eigener Grandmaster", ref_slave: "PTP-gelockt an GM", ref_slave_search: "PTP-Slave (sucht Master…)", ref_system: "System-Clock (frei)",
+    drift_wait: "sammelt Messwerte…", drift_na: "— (nur im PTP-Slave-Betrieb messbar)",
+    gnss_no: "kein GNSS (gpsd nicht verbunden)", gnss_nofix: "verbunden, kein Fix", gnss_fix2d: "2D-Fix", gnss_fix3d: "3D-Fix",
+    gnss_used_of: " genutzt von ", gnss_note_off: "GNSS-Modul anschließen + gpsd starten → Panel füllt sich automatisch.",
   },
   en: {
     sub: "AES67 node",
@@ -220,6 +256,13 @@ const I18N = {
     route_failed: "Route failed: ",
     apis_note: "REST: this UI (/devices, /traffic, …) · NMOS IS-04/IS-05 on its own port under /x-nmos/.",
     now: "now", unit_s: " s", unit_min: " min", locale: "en-US",
+    h_clock: "Reference clock", h_gnss: "GNSS / satellites",
+    l_clk_ref: "Reference", l_drift: "Drift", l_drift48: "@ 48 kHz",
+    l_sats: "Satellites", l_gnss_time: "GNSS time",
+    ref_master: "own grandmaster", ref_slave: "PTP-locked to GM", ref_slave_search: "PTP slave (searching…)", ref_system: "system clock (free-running)",
+    drift_wait: "collecting samples…", drift_na: "— (measurable in PTP slave mode only)",
+    gnss_no: "no GNSS (gpsd not connected)", gnss_nofix: "connected, no fix", gnss_fix2d: "2D fix", gnss_fix3d: "3D fix",
+    gnss_used_of: " used of ", gnss_note_off: "Attach GNSS module + start gpsd → panel fills automatically.",
   }
 };
 
@@ -316,15 +359,62 @@ function renderGrid(reg) {
   }
 }
 
+function renderClock(clk) {
+  // Uhr (Serverzeit; UI formatiert lokal).
+  const d = new Date(clk.time_unix_ms);
+  $("clk-time").textContent = d.toLocaleTimeString(t("locale"), { hour12: false });
+  $("clk-date").textContent = d.toLocaleDateString(t("locale"), { weekday: "short", year: "numeric", month: "2-digit", day: "2-digit" })
+    + " · UTC " + d.toISOString().substring(11, 19);
+
+  // Referenz-Text nach Rolle.
+  $("clk-ref").textContent =
+    clk.role === "master" ? t("ref_master")
+    : clk.role === "slave" ? (clk.synced ? t("ref_slave") : t("ref_slave_search"))
+    : t("ref_system");
+
+  // Drift: ppm + % sowie Hz bei 48 kHz. Nur im Slave-Betrieb messbar.
+  const dr = clk.drift || {};
+  if (dr.valid) {
+    const sign = dr.ppm >= 0 ? "+" : "";
+    $("clk-drift").textContent = `${sign}${dr.ppm.toFixed(3)} ppm (${sign}${dr.percent.toFixed(7)} %)`;
+    $("clk-drift-hz").textContent = `${sign}${dr.hz_at_48k.toFixed(4)} Hz (${dr.window_s}s)`;
+  } else if (clk.role === "slave" && clk.synced) {
+    $("clk-drift").textContent = t("drift_wait");
+    $("clk-drift-hz").textContent = "—";
+  } else {
+    $("clk-drift").textContent = t("drift_na");
+    $("clk-drift-hz").textContent = "—";
+  }
+
+  // GNSS-Status + Satelliten-Balken (SNR 0..55 dB-Hz → Balkenhöhe).
+  const g = clk.gnss || {};
+  const fixTxt = !g.connected ? t("gnss_no")
+    : g.mode >= 3 ? t("gnss_fix3d") : g.mode === 2 ? t("gnss_fix2d") : t("gnss_nofix");
+  setStatus($("gnss-status"), g.connected && g.mode >= 2, fixTxt);
+  $("gnss-sats-n").textContent = g.connected ? `${g.sats_used}${t("gnss_used_of")}${g.sats_visible}` : "—";
+  $("gnss-time").textContent = g.time || "—";
+  $("gnss-note").textContent = g.connected ? "" : t("gnss_note_off");
+  const row = $("gnss-sats"); row.innerHTML = "";
+  for (const s of g.sats || []) {
+    const bar = document.createElement("div");
+    bar.className = "satbar" + (s.used ? " used" : "");
+    const h = Math.max(2, Math.min(55, s.snr) / 55 * 46);
+    bar.innerHTML = `<div class="bar" style="height:${h}px" title="PRN ${s.prn}: ${s.snr} dB-Hz"></div><div class="prn">${s.prn}</div>`;
+    row.appendChild(bar);
+  }
+  row.style.display = (g.sats || []).length ? "" : "none";
+}
+
 async function refresh() {
   try {
-    const [node, tx, rx, disc, devs, traffic, ptp, reg] = await Promise.all([
+    const [node, tx, rx, disc, devs, traffic, ptp, reg, clk] = await Promise.all([
       jget("/node"), jget("/streams/tx"), jget("/streams/rx"), jget("/streams/discovered"),
-      jget("/devices"), jget("/traffic"), jget("/ptp"), jget("/registry"),
+      jget("/devices"), jget("/traffic"), jget("/ptp"), jget("/registry"), jget("/clock"),
     ]);
     renderTraffic(traffic);
     renderDevices(devs);
     renderGrid(reg);
+    renderClock(clk);
 
     if (!ptp.enabled) { setStatus($("ptp-status"), false, t("st_off_sys")); }
     else { setStatus($("ptp-status"), ptp.synced, ptp.synced ? t("st_locked") : t("st_searching")); }

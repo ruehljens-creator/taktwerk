@@ -106,6 +106,10 @@ pub struct AppState {
     pub ptp: Arc<Mutex<PtpSlaveStatus>>,
     /// Live-Status des PTP-Masters (leer, wenn Master nicht aktiv).
     pub ptp_master: Arc<Mutex<PtpMasterStatus>>,
+    /// GNSS-Status (via gpsd; leer/`connected=false` ohne Hardware).
+    pub gnss: crate::clockmon::GnssHandle,
+    /// Geschätzte Uhr-Drift gegen die PTP-Referenz (Clock-Panel).
+    pub drift: crate::clockmon::DriftHandle,
     /// Per NMOS-mDNS entdeckte fremde Nodes (Instanz → Peer), für die Matrix.
     pub nmos_peers: Arc<Mutex<HashMap<String, NmosPeer>>>,
 }
@@ -139,6 +143,8 @@ impl AppState {
             clock: Arc::new(SystemTimeSource),
             ptp: Arc::new(Mutex::new(PtpSlaveStatus::default())),
             ptp_master: Arc::new(Mutex::new(PtpMasterStatus::default())),
+            gnss: Arc::new(Mutex::new(Default::default())),
+            drift: Arc::new(Mutex::new(Default::default())),
             nmos_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }

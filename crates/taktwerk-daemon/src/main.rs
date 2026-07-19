@@ -12,6 +12,7 @@
 //! - `TAKTWERK_CH`    — Default-Kanäle          (Default: 2)
 //! - `TAKTWERK_LOG` / `TAKTWERK_LOG_FILE` — Debug-Log (siehe [`logging`]).
 
+mod clockmon;
 mod config;
 mod handlers;
 mod logging;
@@ -141,10 +142,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // Hintergrund-Tasks: SAP-Discovery, PTP-Monitor, Traffic-Raten-Ticker.
+    // Hintergrund-Tasks: SAP-Discovery, PTP-Monitor, Traffic-Raten-Ticker,
+    // Clock-Panel (Drift-Schätzer + GNSS via gpsd).
     tokio::spawn(tasks::discovery_task(iface, app_state.clone()));
     tokio::spawn(tasks::ptp_monitor_task(iface, app_state.clone()));
     tokio::spawn(tasks::rate_task(app_state.clone()));
+    tokio::spawn(clockmon::drift_task(app_state.clone()));
+    tokio::spawn(clockmon::gpsd_task(app_state.clone()));
 
     // RAVENNA: mDNS-Discovery + eigenen Stream als RAVENNA-Session anbieten
     // (mDNS-Advertise + RTSP-Server für DESCRIBE).
@@ -208,6 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/devices", get(handlers::devices))
         .route("/traffic", get(handlers::traffic))
         .route("/ptp", get(handlers::ptp))
+        .route("/clock", get(clockmon::clock))
         .route("/registry", get(routing::registry))
         .route("/route", post(routing::route))
         .route("/streams/discovered", get(handlers::discovered))

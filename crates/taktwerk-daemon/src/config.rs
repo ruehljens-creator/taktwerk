@@ -37,6 +37,8 @@ pub struct FileConfig {
     pub audio_out: Option<String>,
     pub log: Option<String>,
     pub log_file: Option<String>,
+    /// gpsd-Adresse fürs GNSS-Panel ("off" = deaktiviert; Default 127.0.0.1:2947).
+    pub gpsd: Option<String>,
 }
 
 impl FileConfig {
@@ -99,6 +101,7 @@ impl FileConfig {
         set_if_absent("TAKTWERK_AUDIO_OUT", self.audio_out.as_deref());
         set_if_absent("TAKTWERK_LOG", self.log.as_deref());
         set_if_absent("TAKTWERK_LOG_FILE", self.log_file.as_deref());
+        set_if_absent("TAKTWERK_GPSD", self.gpsd.as_deref());
     }
 }
 
