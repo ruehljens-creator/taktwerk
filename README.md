@@ -15,6 +15,9 @@ Zwei zuschaltbare Rollen: **Router/Kreuzschiene** (Control-Plane) und
 
 Vollständige Spezifikation: [`Taktwerk_Projektbrief.md`](Taktwerk_Projektbrief.md).
 
+**Doku / Docs:** Taktung & GPS-Zeit (Clocking & GPS time, DE/EN) →
+[`docs/clocking.md`](docs/clocking.md).
+
 *Keywords: AES67, ST 2110, ST 2110-30, RAVENNA, NMOS, IS-04, IS-05, AMWA, PTP,
 IEEE 1588, audio over IP, AoIP, RTP L24, SAP, mDNS/DNS-SD, RTSP, SDP, broadcast
 audio, media networking, Dante alternative, virtual sound card, Rust.*
