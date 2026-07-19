@@ -181,6 +181,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             StreamProfile::aes67(channels),
             "239.69.83.67",
             5004,
+            // Beim Start bekannte Clock-Referenz (Master = eigene Identity;
+            // Slave lernt die GM erst zur Laufzeit → dann None).
+            app_state.ptp_refclk(),
         ));
         // Steuerbare Senke (unser Receiver) für IS-05-PATCH aus der Kreuzschiene.
         let control: std::sync::Arc<dyn taktwerk_router::ReceiverControl> =

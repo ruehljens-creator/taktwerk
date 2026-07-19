@@ -30,6 +30,9 @@ pub struct NmosNode {
     pub profile: StreamProfile,
     pub group: String,
     pub port: u16,
+    /// PTP-Clock-Referenz des Knotens (RFC 7273): Master = eigene Identity,
+    /// Slave = Grandmaster (falls beim Start bekannt), sonst None.
+    pub refclk: Option<PtpRefClock>,
 }
 
 impl NmosNode {
@@ -43,6 +46,7 @@ impl NmosNode {
         profile: StreamProfile,
         group: impl Into<String>,
         port: u16,
+        refclk: Option<PtpRefClock>,
     ) -> Self {
         let label = label.into();
         Self {
@@ -58,6 +62,7 @@ impl NmosNode {
             profile,
             group: group.into(),
             port,
+            refclk,
             label,
         }
     }
@@ -75,10 +80,7 @@ impl NmosNode {
             port: self.port,
             payload_type: 97,
             profile: self.profile,
-            refclk: Some(PtpRefClock {
-                gmid: "00-00-00-FF-FE-00-00-00".into(),
-                domain: 0,
-            }),
+            refclk: self.refclk.clone(),
             mediaclk_offset: 0,
         }
         .to_sdp()
@@ -104,7 +106,14 @@ impl NmosNode {
                 }]
             },
             "services": [],
-            "clocks": [{ "name": "clk0", "ref_type": "ptp", "traceable": false, "version": "IEEE1588-2008", "gmid": "00-00-00-ff-fe-00-00-00", "locked": false }],
+            "clocks": [{
+                "name": "clk0",
+                "ref_type": "ptp",
+                "traceable": false,
+                "version": "IEEE1588-2008",
+                "gmid": self.refclk.as_ref().map(|r| r.gmid.to_lowercase()).unwrap_or_else(|| "00-00-00-ff-fe-00-00-00".into()),
+                "locked": self.refclk.is_some()
+            }],
             "interfaces": [{
                 "name": self.interface,
                 "chassis_id": null,

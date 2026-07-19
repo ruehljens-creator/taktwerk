@@ -6,8 +6,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 
-use taktwerk_core::sdp::{AudioSession, PtpRefClock};
-use taktwerk_core::StreamProfile;
+use taktwerk_core::sdp::AudioSession;
 use taktwerk_discovery::rtsp;
 use taktwerk_discovery::{describe, MdnsDiscovery};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -21,7 +20,8 @@ use crate::state::{now_unix, AppState, DiscoveredEntry};
 const RAVENNA_GROUP: &str = "239.69.83.67";
 const RAVENNA_PORT: u16 = 5004;
 
-/// Baut die SDP unseres Knoten-Streams (für RTSP `DESCRIBE`).
+/// Baut die SDP unseres Knoten-Streams (für RTSP `DESCRIBE`). Wird pro Anfrage
+/// gebaut → die Clock-Referenz ist live (echte GMID bei aktivem PTP, sonst ohne).
 fn node_sdp(state: &AppState) -> String {
     let n = &state.node;
     AudioSession {
@@ -30,11 +30,8 @@ fn node_sdp(state: &AppState) -> String {
         multicast_addr: RAVENNA_GROUP.to_string(),
         port: RAVENNA_PORT,
         payload_type: 97,
-        profile: StreamProfile::level_a(n.profile.channels),
-        refclk: Some(PtpRefClock {
-            gmid: "00-00-00-FF-FE-00-00-00".into(),
-            domain: 0,
-        }),
+        profile: n.profile,
+        refclk: state.ptp_refclk(),
         mediaclk_offset: 0,
     }
     .to_sdp()

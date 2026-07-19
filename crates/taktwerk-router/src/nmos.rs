@@ -277,7 +277,25 @@ mod tests {
             StreamProfile::level_a(2),
             "239.69.83.67",
             5004,
+            Some(taktwerk_core::sdp::PtpRefClock {
+                gmid: "AA-BB-CC-FF-FE-11-22-33".into(),
+                domain: 0,
+            }),
         ))
+    }
+
+    #[test]
+    fn transport_sdp_carries_real_refclk() {
+        let n = node();
+        let sdp = n.transport_sdp();
+        assert!(
+            sdp.contains("ts-refclk:ptp=IEEE1588-2008:AA-BB-CC-FF-FE-11-22-33:0"),
+            "echte GMID muss in der Transportdatei stehen: {sdp}"
+        );
+        // Node-Clock spiegelt dieselbe Referenz (lowercase, locked).
+        let ns = n.node_self();
+        assert_eq!(ns["clocks"][0]["gmid"], "aa-bb-cc-ff-fe-11-22-33");
+        assert_eq!(ns["clocks"][0]["locked"], true);
     }
 
     #[test]
