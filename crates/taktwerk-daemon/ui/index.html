@@ -99,6 +99,10 @@
       <b data-i18n="l_drift">Drift</b><span class="driftnum" id="clk-drift">—</span>
       <b data-i18n="l_drift48">@ 48 kHz</b><span class="driftnum" id="clk-drift-hz">—</span>
     </div>
+    <div class="row">
+      <label class="muted" style="font-size:12px" data-i18n="l_ref_sel">Referenzquelle</label>
+      <select id="clk-source" style="background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:6px 9px;font:inherit"></select>
+    </div>
   </section>
 
   <section class="panel">
@@ -232,6 +236,9 @@ const I18N = {
     drift_wait: "sammelt Messwerte…", drift_na: "— (nur im PTP-Slave-Betrieb messbar)",
     gnss_no: "kein GNSS (gpsd nicht verbunden)", gnss_nofix: "verbunden, kein Fix", gnss_fix2d: "2D-Fix", gnss_fix3d: "3D-Fix",
     gnss_used_of: " genutzt von ", gnss_note_off: "GNSS-Modul anschließen + gpsd starten → Panel füllt sich automatisch.",
+    l_ref_sel: "Referenzquelle",
+    src_auto: "Automatisch", src_ptp: "PTP-Netz", src_gnss: "GNSS (GPS/Galileo)", src_system: "System-Clock",
+    src_aes: "AES/Haustakt (folgt)", src_wcpps: "Wordclock-PPS (folgt)",
   },
   en: {
     sub: "AES67 node",
@@ -263,6 +270,9 @@ const I18N = {
     drift_wait: "collecting samples…", drift_na: "— (measurable in PTP slave mode only)",
     gnss_no: "no GNSS (gpsd not connected)", gnss_nofix: "connected, no fix", gnss_fix2d: "2D fix", gnss_fix3d: "3D fix",
     gnss_used_of: " used of ", gnss_note_off: "Attach GNSS module + start gpsd → panel fills automatically.",
+    l_ref_sel: "Reference source",
+    src_auto: "Automatic", src_ptp: "PTP network", src_gnss: "GNSS (GPS/Galileo)", src_system: "System clock",
+    src_aes: "AES/house clock (soon)", src_wcpps: "Wordclock PPS (soon)",
   }
 };
 
@@ -403,7 +413,31 @@ function renderClock(clk) {
     row.appendChild(bar);
   }
   row.style.display = (g.sats || []).length ? "" : "none";
+
+  // Referenzquellen-Dropdown (nur neu bauen, wenn sich etwas ändert — sonst
+  // würde jede Sekunde die offene Auswahl zuklappen).
+  const sel = $("clk-source");
+  const key = JSON.stringify([clk.sources, clk.selected_source, LANG]);
+  if (sel.dataset.key !== key) {
+    sel.dataset.key = key;
+    sel.innerHTML = "";
+    for (const s of clk.sources || []) {
+      const o = document.createElement("option");
+      o.value = s.id;
+      o.textContent = t("src_" + s.id);
+      o.disabled = !s.available;
+      if (s.id === clk.selected_source) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
 }
+
+$("clk-source").onchange = async (e) => {
+  try {
+    await fetch("/clock/source", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: e.target.value }) });
+    refresh();
+  } catch (err) { /* nächster Refresh zeigt den echten Zustand */ }
+};
 
 async function refresh() {
   try {

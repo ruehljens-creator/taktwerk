@@ -223,7 +223,31 @@ fn apply_gpsd_msg(state: &AppState, v: &Value) {
     }
 }
 
-/// `GET /clock` — Serverzeit + PTP-Rolle/Drift + GNSS-Status fürs UI-Panel.
+/// Bekannte Referenzquellen. Auswahl steuert derzeit Anzeige/Reporting; die
+/// eigentliche Takt-Disziplinierung folgt mit dem ClockDiscipline-Modul.
+/// "aes" (Haustakt via Audio-In) und "wcpps" (Wordclock→1-Hz-Teiler) sind als
+/// künftige Quellen schon gelistet, aber bis dahin nicht verfügbar.
+const CLOCK_SOURCES: &[&str] = &["auto", "ptp", "gnss", "system", "aes", "wcpps"];
+
+/// Liste der Quellen mit Verfügbarkeit im aktuellen Zustand.
+fn sources_json(state: &AppState) -> Value {
+    let gnss_ok = state.gnss.lock().unwrap().connected;
+    let ptp_ok = state.node.ptp_slave || state.node.ptp_master;
+    json!(CLOCK_SOURCES
+        .iter()
+        .map(|id| {
+            let available = match *id {
+                "auto" | "system" => true,
+                "ptp" => ptp_ok,
+                "gnss" => gnss_ok,
+                _ => false, // aes/wcpps: Hardware-Wege folgen
+            };
+            json!({ "id": id, "available": available })
+        })
+        .collect::<Vec<_>>())
+}
+
+/// `GET /clock` — Serverzeit + Rolle/Drift + GNSS + Referenzquellen fürs Panel.
 pub async fn clock(State(state): State<AppState>) -> Json<Value> {
     let time_unix_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -239,13 +263,38 @@ pub async fn clock(State(state): State<AppState>) -> Json<Value> {
     let synced = state.ptp.lock().unwrap().synced;
     let drift = state.drift.lock().unwrap().clone();
     let gnss = state.gnss.lock().unwrap().clone();
+    let selected = state.clock_ref.lock().unwrap().clone();
     Json(json!({
         "time_unix_ms": time_unix_ms,
         "role": role,
         "synced": synced,
         "drift": drift,
         "gnss": gnss,
+        "sources": sources_json(&state),
+        "selected_source": selected,
     }))
+}
+
+/// Request für `POST /clock/source`.
+#[derive(serde::Deserialize)]
+pub struct SourceRequest {
+    pub id: String,
+}
+
+/// `POST /clock/source` — Referenzquelle wählen (nur bekannte IDs).
+pub async fn set_source(
+    State(state): State<AppState>,
+    Json(req): Json<SourceRequest>,
+) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
+    if !CLOCK_SOURCES.contains(&req.id.as_str()) {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            format!("unbekannte Quelle: {}", req.id),
+        ));
+    }
+    *state.clock_ref.lock().unwrap() = req.id.clone();
+    info!(source = %req.id, "Referenzquelle gewählt");
+    Ok(Json(json!({ "selected_source": req.id })))
 }
 
 /// Handle-Typ für den geteilten GNSS-Zustand.

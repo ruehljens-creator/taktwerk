@@ -213,6 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/traffic", get(handlers::traffic))
         .route("/ptp", get(handlers::ptp))
         .route("/clock", get(clockmon::clock))
+        .route("/clock/source", post(clockmon::set_source))
         .route("/registry", get(routing::registry))
         .route("/route", post(routing::route))
         .route("/streams/discovered", get(handlers::discovered))

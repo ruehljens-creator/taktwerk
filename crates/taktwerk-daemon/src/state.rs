@@ -110,6 +110,8 @@ pub struct AppState {
     pub gnss: crate::clockmon::GnssHandle,
     /// Geschätzte Uhr-Drift gegen die PTP-Referenz (Clock-Panel).
     pub drift: crate::clockmon::DriftHandle,
+    /// Gewählte Referenzquelle fürs Clock-Panel ("auto"/"ptp"/"gnss"/"system").
+    pub clock_ref: Arc<Mutex<String>>,
     /// Per NMOS-mDNS entdeckte fremde Nodes (Instanz → Peer), für die Matrix.
     pub nmos_peers: Arc<Mutex<HashMap<String, NmosPeer>>>,
 }
@@ -145,6 +147,7 @@ impl AppState {
             ptp_master: Arc::new(Mutex::new(PtpMasterStatus::default())),
             gnss: Arc::new(Mutex::new(Default::default())),
             drift: Arc::new(Mutex::new(Default::default())),
+            clock_ref: Arc::new(Mutex::new("auto".into())),
             nmos_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
