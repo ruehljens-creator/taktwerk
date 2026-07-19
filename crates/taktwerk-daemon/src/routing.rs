@@ -59,7 +59,7 @@ impl ReceiverControl for DaemonReceiverControl {
         let state = &self.0;
 
         stop_rx(state); // evtl. bestehendes Abo lösen
-        // Profil direkt aus der SDP übernehmen (echte Kanalzahl + Paketzeit des Senders).
+                        // Profil direkt aus der SDP übernehmen (echte Kanalzahl + Paketzeit des Senders).
         let profile = session.profile;
         let (shutdown, packets, handle) = start_rx(
             state.node.interface,

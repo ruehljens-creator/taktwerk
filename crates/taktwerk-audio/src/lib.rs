@@ -152,7 +152,13 @@ pub fn open(
     playback: bool,
     use_device: bool,
 ) -> Box<dyn AudioBackend> {
-    open_with(profile, capture, playback, use_device, DeviceSelection::default())
+    open_with(
+        profile,
+        capture,
+        playback,
+        use_device,
+        DeviceSelection::default(),
+    )
 }
 
 /// Öffnet ein Backend für die gewünschten Richtungen. Wenn `use_device` gesetzt

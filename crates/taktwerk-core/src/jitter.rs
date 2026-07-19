@@ -165,7 +165,7 @@ mod tests {
         let mut jb = JitterBuffer::new(2, 2); // Tiefe 2
         let mut out = Vec::new();
         jb.push(0, pkt(1, 2), &mut out); // raus
-        // 1 fehlt dauerhaft; 2,3,4 kommen → sobald pending > depth, wird 1 kaschiert
+                                         // 1 fehlt dauerhaft; 2,3,4 kommen → sobald pending > depth, wird 1 kaschiert
         jb.push(2, pkt(3, 2), &mut out);
         jb.push(3, pkt(4, 2), &mut out);
         jb.push(4, pkt(5, 2), &mut out); // pending {2,3,4} > 2 → 1 als Stille, dann 2,3,4

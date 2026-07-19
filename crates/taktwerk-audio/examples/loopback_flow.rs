@@ -13,8 +13,12 @@ use taktwerk_audio::{AudioBackend, CpalBackend};
 use taktwerk_core::StreamProfile;
 
 fn main() {
-    let out_name = std::env::args().nth(1).unwrap_or_else(|| "Loopback,DEV=1".into());
-    let in_name = std::env::args().nth(2).unwrap_or_else(|| "Loopback,DEV=0".into());
+    let out_name = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "Loopback,DEV=1".into());
+    let in_name = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "Loopback,DEV=0".into());
     let p = StreamProfile::level_a(2); // 48 kHz, 2 ch
 
     // Playback zuerst öffnen (pinnt das snd-aloop-Kabel auf 48 kHz/2 ch), dann Capture.

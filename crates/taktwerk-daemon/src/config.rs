@@ -85,9 +85,15 @@ impl FileConfig {
         set_if_absent("TAKTWERK_HTTP", self.http.as_deref());
         set_if_absent("TAKTWERK_NMOS", self.nmos.as_deref());
         set_if_absent("TAKTWERK_RTSP", self.rtsp.as_deref());
-        set_if_absent("TAKTWERK_CH", self.channels.map(|c| c.to_string()).as_deref());
+        set_if_absent(
+            "TAKTWERK_CH",
+            self.channels.map(|c| c.to_string()).as_deref(),
+        );
         set_if_absent("TAKTWERK_PTP_SLAVE", self.ptp_slave.map(bool01).as_deref());
-        set_if_absent("TAKTWERK_PTP_MASTER", self.ptp_master.map(bool01).as_deref());
+        set_if_absent(
+            "TAKTWERK_PTP_MASTER",
+            self.ptp_master.map(bool01).as_deref(),
+        );
         set_if_absent("TAKTWERK_AUDIO", self.audio.as_deref());
         set_if_absent("TAKTWERK_AUDIO_IN", self.audio_in.as_deref());
         set_if_absent("TAKTWERK_AUDIO_OUT", self.audio_out.as_deref());
@@ -97,7 +103,11 @@ impl FileConfig {
 }
 
 fn bool01(b: bool) -> String {
-    if b { "1".into() } else { "0".into() }
+    if b {
+        "1".into()
+    } else {
+        "0".into()
+    }
 }
 
 /// Setzt `key` auf `val`, falls `val` vorhanden **und** `key` nicht schon gesetzt.

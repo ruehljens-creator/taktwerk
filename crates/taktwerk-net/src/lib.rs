@@ -24,9 +24,7 @@ pub mod sap;
 pub mod sender;
 
 pub use multicast::{bind_receiver, bind_sender, MulticastConfig};
-pub use ptp::{
-    PtpListener, PtpMaster, PtpMasterStatus, PtpMessage, PtpSlave, PtpSlaveStatus,
-};
+pub use ptp::{PtpListener, PtpMaster, PtpMasterStatus, PtpMessage, PtpSlave, PtpSlaveStatus};
 pub use receiver::{ReceivedPacket, RtpReceiver};
 pub use sap::{bind_sap_announcer, bind_sap_listener, SapAnnouncer, SapEvent, SapListener};
 pub use sender::RtpSender;

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # cpal-Backend braucht auf Linux die ALSA-Header.
+      - name: ALSA-Deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - name: Test (Workspace, headless)
+        run: cargo test --workspace --verbose
+      # Sicherstellen, dass auch das optionale Echtgeräte-Backend baut.
+      - name: Build cpal-Feature
+        run: cargo build -p taktwerk-daemon --features cpal
+
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - name: rustfmt (blockierend)
+        run: cargo fmt --all --check
+      - name: clippy (beratend)
+        run: cargo clippy --workspace --all-targets
+        continue-on-error: true

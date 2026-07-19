@@ -348,8 +348,8 @@ impl PtpMaster {
     fn our_dataset(&self) -> ClockDataset {
         ClockDataset {
             priority1: self.priority1,
-            clock_class: 248,      // free-running (ehrlich: kein GPS/Atom)
-            clock_accuracy: 0xFE,  // unknown
+            clock_class: 248,     // free-running (ehrlich: kein GPS/Atom)
+            clock_accuracy: 0xFE, // unknown
             offset_scaled_log_variance: 0xFFFF,
             priority2: 128,
             clock_identity: self.our_identity,
@@ -393,7 +393,12 @@ impl PtpMaster {
         let ann = Announce {
             // Flag ptpTimescale (0x0008) setzen — sonst deuten Empfänger unsere
             // Zeit als ARB-Zeitskala ("not using PTP timescale").
-            header: self.base_header(MessageType::Announce, self.announce_seq, 0, FLAG_PTP_TIMESCALE),
+            header: self.base_header(
+                MessageType::Announce,
+                self.announce_seq,
+                0,
+                FLAG_PTP_TIMESCALE,
+            ),
             origin_timestamp: PtpTimestamp::from_nanos(now_nanos()),
             current_utc_offset: 37,
             gm_priority1: ds.priority1,

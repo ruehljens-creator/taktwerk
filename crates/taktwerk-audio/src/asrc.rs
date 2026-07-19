@@ -160,6 +160,9 @@ mod tests {
         let mut out = Vec::new();
         a.process(target + 1000, &input, &mut out);
         assert!(a.ratio() > 1.0, "ratio {} sollte > 1 sein", a.ratio());
-        assert!(out.len() <= input.len(), "sollte nicht mehr Samples erzeugen");
+        assert!(
+            out.len() <= input.len(),
+            "sollte nicht mehr Samples erzeugen"
+        );
     }
 }
