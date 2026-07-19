@@ -12,6 +12,7 @@
 //! - `TAKTWERK_CH`    — Default-Kanäle          (Default: 2)
 //! - `TAKTWERK_LOG` / `TAKTWERK_LOG_FILE` — Debug-Log (siehe [`logging`]).
 
+mod config;
 mod handlers;
 mod logging;
 mod monitor;
@@ -32,6 +33,10 @@ use crate::state::{AppState, NodeInfo};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Optionale TOML-Konfig vor allem anderen in die Umgebung spiegeln (Env hat
+    // Vorrang). Danach liest der restliche Daemon wie gewohnt aus `TAKTWERK_*`.
+    config::FileConfig::load().apply_to_env();
+
     // Debug-Log so früh wie möglich einrichten; Guard bis Programmende halten.
     let _log_guard = logging::init();
 

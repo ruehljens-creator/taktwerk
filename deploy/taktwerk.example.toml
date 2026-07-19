@@ -1,0 +1,35 @@
+# Beispiel-Konfiguration für taktwerkd.
+# Ablage: ./taktwerk.toml, /etc/taktwerk/taktwerk.toml oder Pfad in TAKTWERK_CONFIG.
+# WICHTIG: Umgebungsvariablen (TAKTWERK_*) haben immer Vorrang vor dieser Datei.
+
+# Anzeigename des Knotens
+name = "taktwerk-node"
+
+# Interface-IP (IPv4) für Multicast/Discovery; leer/0.0.0.0 = OS-Default
+iface = "0.0.0.0"
+
+# REST-/Web-UI-Bind-Adresse
+http = "127.0.0.1:7788"
+
+# NMOS IS-04/IS-05 Bind-Adresse
+nmos = "127.0.0.1:7789"
+
+# RAVENNA-RTSP-Server
+rtsp = "0.0.0.0:8554"
+
+# Default-Kanäle (1..=64; Paketzeit wird passend gewählt)
+channels = 2
+
+# PTP: an Grandmaster locken (Slave)
+ptp_slave = false
+
+# Audio-Backend: "cpal" für echtes/virtuelles Gerät, sonst headless
+audio = "null"
+# Gezielte Geräteauswahl per Name (Teilstring), z. B. Linux snd-aloop oder
+# macOS "Pro Tools Audio Bridge 64":
+# audio_in  = "Loopback"
+# audio_out = "Loopback"
+
+# Logging (siehe README/Debug-Log)
+log = "info"
+# log_file = "taktwerk.log"
