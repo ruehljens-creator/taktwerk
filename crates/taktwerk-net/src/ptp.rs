@@ -61,6 +61,16 @@ pub enum PtpMessage {
 }
 
 impl PtpMessage {
+    /// PTP-Domain der Nachricht (aus dem Header).
+    pub fn domain(&self) -> u8 {
+        match self {
+            PtpMessage::Announce(a) => a.header.domain,
+            PtpMessage::Sync(m) | PtpMessage::FollowUp(m) => m.header.domain,
+            PtpMessage::DelayResp(d) => d.header.domain,
+            PtpMessage::Other(h) => h.domain,
+        }
+    }
+
     /// Kurzname des Nachrichtentyps (für Logs).
     pub fn kind(&self) -> &'static str {
         match self {
@@ -180,6 +190,9 @@ pub struct PtpSlave {
     send_sock: UdpSocket,
     dest: std::net::SocketAddr,
     our_identity: ClockIdentity,
+    /// PTP-Domain, an die wir uns locken (Nachrichten anderer Domains werden
+    /// vollständig ignoriert — ST 2059: Domain trennt Verbünde).
+    domain: u8,
     state: SlaveState,
     offset_handle: Arc<AtomicI64>,
     status: Arc<Mutex<PtpSlaveStatus>>,
@@ -188,10 +201,12 @@ pub struct PtpSlave {
 
 impl PtpSlave {
     /// Baut den Slave auf einem Interface. `our_identity` = eigene Clock-Identity;
-    /// `offset_handle` wird mit dem laufenden Offset (Slave−Master, ns) beschrieben.
+    /// `domain` = PTP-Domain; `offset_handle` wird mit dem laufenden Offset
+    /// (Slave−Master, ns) beschrieben.
     pub fn bind(
         iface: Ipv4Addr,
         our_identity: ClockIdentity,
+        domain: u8,
         offset_handle: Arc<AtomicI64>,
         status: Arc<Mutex<PtpSlaveStatus>>,
     ) -> io::Result<Self> {
@@ -206,6 +221,7 @@ impl PtpSlave {
             send_sock,
             dest: std::net::SocketAddr::from((group, PTP_EVENT_PORT)),
             our_identity,
+            domain,
             state: SlaveState::new(0.1),
             offset_handle,
             status,
@@ -231,6 +247,9 @@ impl PtpSlave {
             tokio::select! {
                 res = self.listener.recv() => {
                     let (msg, _from, _bytes) = res?;
+                    if msg.domain() != self.domain {
+                        continue; // fremde PTP-Domain — gehört nicht zu unserem Verbund
+                    }
                     match msg {
                         PtpMessage::Announce(a) => {
                             self.status.lock().unwrap().grandmaster = Some(a.gm_identity);
@@ -267,7 +286,7 @@ impl PtpSlave {
                 }
                 _ = delay_tick.tick() => {
                     let our_port = PortIdentity { clock_identity: self.our_identity, port: 1 };
-                    if let Ok(req) = build_delay_req(our_port, self.seq) {
+                    if let Ok(req) = build_delay_req(our_port, self.seq, self.domain) {
                         let t3 = now_nanos();
                         self.state.on_delay_req_sent(self.seq, t3);
                         let _ = self.send_sock.send_to(&req, self.dest).await;
@@ -281,6 +300,59 @@ impl PtpSlave {
         }
         Ok(())
     }
+}
+
+/// PTP-Profil-Parameter (ST 2059-2 / AES67 Media Profile Stellschrauben).
+///
+/// Die Defaults entsprechen dem bisherigen AES67-Verhalten (Domain 0, Sync
+/// 250 ms, Announce 1 s, clockClass 248 = free-running). [`PtpProfile::st2059`]
+/// liefert die SMPTE-Broadcast-Vorbelegung (Domain 127, Sync 125 ms,
+/// Announce 250 ms).
+#[derive(Debug, Clone, Copy)]
+pub struct PtpProfile {
+    /// PTP-Domain (Broadcast/ST 2059 üblich: 127).
+    pub domain: u8,
+    /// BMCA priority1 (kleiner = stärker; 128 = neutral).
+    pub priority1: u8,
+    /// BMCA priority2.
+    pub priority2: u8,
+    /// clockClass (248 = free-running; 6 = GPS-diszipliniert & gelockt).
+    pub clock_class: u8,
+    /// Sync/Follow_Up-Intervall.
+    pub sync_interval: Duration,
+    /// Announce-Intervall.
+    pub announce_interval: Duration,
+}
+
+impl Default for PtpProfile {
+    fn default() -> Self {
+        Self {
+            domain: 0,
+            priority1: 128,
+            priority2: 128,
+            clock_class: 248,
+            sync_interval: Duration::from_millis(250),
+            announce_interval: Duration::from_millis(1000),
+        }
+    }
+}
+
+impl PtpProfile {
+    /// SMPTE-ST-2059-2-Vorbelegung (Broadcast): Domain 127, Sync 8/s, Announce 4/s.
+    pub fn st2059() -> Self {
+        Self {
+            domain: 127,
+            sync_interval: Duration::from_millis(125),
+            announce_interval: Duration::from_millis(250),
+            ..Self::default()
+        }
+    }
+}
+
+/// `logMessageInterval` (log2 der Periode in Sekunden) aus einer Duration —
+/// 125 ms → −3, 250 ms → −2, 1 s → 0.
+fn log_interval(d: Duration) -> i8 {
+    d.as_secs_f64().log2().round() as i8
 }
 
 /// Live-Status des PTP-**Masters** (für Daemon/UI).
@@ -305,7 +377,7 @@ pub struct PtpMaster {
     send: UdpSocket,
     group: Ipv4Addr,
     our_identity: ClockIdentity,
-    priority1: u8,
+    profile: PtpProfile,
     status: Arc<Mutex<PtpMasterStatus>>,
     announce_seq: u16,
     sync_seq: u16,
@@ -315,12 +387,12 @@ pub struct PtpMaster {
 }
 
 impl PtpMaster {
-    /// Baut den Master auf einem Interface. `priority1` steuert die BMCA-Stärke
-    /// (kleiner = stärker; 128 = Standard). `status` wird laufend aktualisiert.
+    /// Baut den Master auf einem Interface mit den Profil-Parametern
+    /// (Domain/Prioritäten/clockClass/Intervalle). `status` wird laufend gepflegt.
     pub fn bind(
         iface: Ipv4Addr,
         our_identity: ClockIdentity,
-        priority1: u8,
+        profile: PtpProfile,
         status: Arc<Mutex<PtpMasterStatus>>,
     ) -> io::Result<Self> {
         let listener = PtpListener::bind(iface)?;
@@ -335,7 +407,7 @@ impl PtpMaster {
             send,
             group,
             our_identity,
-            priority1,
+            profile,
             status,
             announce_seq: 0,
             sync_seq: 0,
@@ -344,14 +416,14 @@ impl PtpMaster {
         })
     }
 
-    /// Unser eigener BMCA-Datensatz (frei laufende Uhr, Klasse 248).
+    /// Unser eigener BMCA-Datensatz (Klasse/Prioritäten aus dem Profil).
     fn our_dataset(&self) -> ClockDataset {
         ClockDataset {
-            priority1: self.priority1,
-            clock_class: 248,     // free-running (ehrlich: kein GPS/Atom)
-            clock_accuracy: 0xFE, // unknown
+            priority1: self.profile.priority1,
+            clock_class: self.profile.clock_class,
+            clock_accuracy: 0xFE, // unknown (SW-Uhr)
             offset_scaled_log_variance: 0xFFFF,
-            priority2: 128,
+            priority2: self.profile.priority2,
             clock_identity: self.our_identity,
             steps_removed: 0,
         }
@@ -375,7 +447,7 @@ impl PtpMaster {
             message_type: mt,
             version: 2,
             message_length: 0, // setzt der jeweilige write()
-            domain: 0,
+            domain: self.profile.domain,
             flags,
             correction: 0,
             source_port: PortIdentity {
@@ -396,7 +468,7 @@ impl PtpMaster {
             header: self.base_header(
                 MessageType::Announce,
                 self.announce_seq,
-                0,
+                log_interval(self.profile.announce_interval),
                 FLAG_PTP_TIMESCALE,
             ),
             origin_timestamp: PtpTimestamp::from_nanos(now_nanos()),
@@ -421,8 +493,9 @@ impl PtpMaster {
     async fn send_sync_pair(&mut self) {
         let t1 = now_nanos();
         // Sync (Event/319) mit two-step-Flag; preciseOriginTimestamp folgt im Follow_Up.
+        let li = log_interval(self.profile.sync_interval);
         let sync = TimestampedMsg {
-            header: self.base_header(MessageType::Sync, self.sync_seq, -2, FLAG_TWO_STEP),
+            header: self.base_header(MessageType::Sync, self.sync_seq, li, FLAG_TWO_STEP),
             timestamp: PtpTimestamp::from_nanos(t1),
         };
         let mut sbuf = [0u8; TimestampedMsg::LEN];
@@ -431,7 +504,7 @@ impl PtpMaster {
         }
         // Follow_Up (General/320) trägt den (präzisen) Sende-Zeitstempel t1.
         let fup = TimestampedMsg {
-            header: self.base_header(MessageType::FollowUp, self.sync_seq, -2, 0),
+            header: self.base_header(MessageType::FollowUp, self.sync_seq, li, 0),
             timestamp: PtpTimestamp::from_nanos(t1),
         };
         let mut fbuf = [0u8; TimestampedMsg::LEN];
@@ -475,15 +548,19 @@ impl PtpMaster {
     /// Läuft bis zum Shutdown: sendet periodisch Announce/Sync/Follow_Up (solange
     /// aktiv) und beantwortet Delay_Req.
     pub async fn run(mut self, mut shutdown: watch::Receiver<bool>) -> io::Result<()> {
-        let mut announce_tick = interval(Duration::from_secs(1));
+        let mut announce_tick = interval(self.profile.announce_interval);
         announce_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        let mut sync_tick = interval(Duration::from_millis(250));
+        let mut sync_tick = interval(self.profile.sync_interval);
         sync_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
                 res = self.listener.recv() => {
                     let (msg, _from, _bytes) = res?;
+                    // Fremde Domains vollständig ignorieren (ST 2059: Domain trennt Verbünde).
+                    if msg.domain() != self.profile.domain {
+                        continue;
+                    }
                     match msg {
                         PtpMessage::Announce(a) => self.note_foreign_announce(&a),
                         PtpMessage::Other(h) if h.message_type == MessageType::DelayReq => {
@@ -500,7 +577,12 @@ impl PtpMaster {
                     // Stale-Zähler: verschwindet der fremde GM, werden wir wieder aktiv.
                     if self.best_foreign.is_some() {
                         self.foreign_stale = self.foreign_stale.saturating_add(1);
-                        if self.foreign_stale >= 3 {
+                        // ~3 s ohne fremde Announce (unabhängig vom Intervall)
+                        // → fremden GM vergessen, wieder aktiv werden.
+                        let limit = (3.0 / self.profile.announce_interval.as_secs_f64())
+                            .ceil()
+                            .max(3.0) as u8;
+                        if self.foreign_stale >= limit {
                             self.best_foreign = None;
                             self.status.lock().unwrap().better_master = None;
                         }
@@ -578,5 +660,35 @@ mod tests {
     #[test]
     fn classify_ignores_garbage() {
         assert!(classify(&[0u8; 4]).is_none()); // zu kurz für Header
+    }
+
+    #[test]
+    fn log_interval_matches_common_rates() {
+        assert_eq!(log_interval(Duration::from_millis(125)), -3);
+        assert_eq!(log_interval(Duration::from_millis(250)), -2);
+        assert_eq!(log_interval(Duration::from_millis(500)), -1);
+        assert_eq!(log_interval(Duration::from_millis(1000)), 0);
+        assert_eq!(log_interval(Duration::from_millis(2000)), 1);
+    }
+
+    #[test]
+    fn st2059_preset_is_broadcast_profile() {
+        let p = PtpProfile::st2059();
+        assert_eq!(p.domain, 127);
+        assert_eq!(p.sync_interval, Duration::from_millis(125));
+        assert_eq!(p.announce_interval, Duration::from_millis(250));
+        // Rest bleibt Default.
+        assert_eq!(p.priority1, 128);
+        assert_eq!(p.clock_class, 248);
+    }
+
+    #[test]
+    fn message_domain_is_exposed() {
+        let mut buf = announce_bytes();
+        buf[4] = 127; // domain-Byte im Header
+        match classify(&buf) {
+            Some(m) => assert_eq!(m.domain(), 127),
+            None => panic!("Announce muss parsen"),
+        }
     }
 }

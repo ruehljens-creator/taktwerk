@@ -25,6 +25,8 @@ pub struct NodeInfo {
     pub ptp_slave: bool,
     /// Ob der PTP-Master/Grandmaster-Modus aktiviert ist.
     pub ptp_master: bool,
+    /// PTP-Domain des Knotens (ST 2059/Broadcast üblich: 127; AES67-Default 0).
+    pub ptp_domain: u8,
     /// NMOS-Host (für die Kreuzschiene, um den eigenen Receiver zu adressieren).
     pub nmos_host: String,
     /// NMOS-Port.
@@ -131,7 +133,7 @@ impl AppState {
         }?;
         Some(PtpRefClock {
             gmid: fmt_eui64(id),
-            domain: 0,
+            domain: self.node.ptp_domain,
         })
     }
 

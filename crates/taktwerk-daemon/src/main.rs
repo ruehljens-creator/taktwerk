@@ -73,10 +73,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         (ptp_master, ptp_slave)
     };
-    let ptp_priority1: u8 = std::env::var("TAKTWERK_PTP_PRIORITY1")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(128);
+    // PTP-Profil: Preset (TAKTWERK_PTP_PROFILE=st2059 → Domain 127, Sync 125 ms,
+    // Announce 250 ms) als Basis, einzelne Envs überschreiben gezielt.
+    let mut ptp_profile = match std::env::var("TAKTWERK_PTP_PROFILE").as_deref() {
+        Ok(p) if p.eq_ignore_ascii_case("st2059") => taktwerk_net::PtpProfile::st2059(),
+        _ => taktwerk_net::PtpProfile::default(),
+    };
+    let env_u8 = |k: &str| std::env::var(k).ok().and_then(|s| s.parse::<u8>().ok());
+    let env_ms = |k: &str| std::env::var(k).ok().and_then(|s| s.parse::<u64>().ok());
+    if let Some(v) = env_u8("TAKTWERK_PTP_DOMAIN") {
+        ptp_profile.domain = v;
+    }
+    if let Some(v) = env_u8("TAKTWERK_PTP_PRIORITY1") {
+        ptp_profile.priority1 = v;
+    }
+    if let Some(v) = env_u8("TAKTWERK_PTP_PRIORITY2") {
+        ptp_profile.priority2 = v;
+    }
+    if let Some(v) = env_u8("TAKTWERK_PTP_CLOCK_CLASS") {
+        ptp_profile.clock_class = v;
+    }
+    if let Some(v) = env_ms("TAKTWERK_PTP_SYNC_MS") {
+        ptp_profile.sync_interval = std::time::Duration::from_millis(v.max(31));
+    }
+    if let Some(v) = env_ms("TAKTWERK_PTP_ANNOUNCE_MS") {
+        ptp_profile.announce_interval = std::time::Duration::from_millis(v.max(125));
+    }
 
     let node = NodeInfo {
         name: name.clone(),
@@ -84,6 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         profile: StreamProfile::aes67(channels),
         ptp_slave,
         ptp_master,
+        ptp_domain: ptp_profile.domain,
         nmos_host: iface.to_string(),
         nmos_port: nmos_http.port(),
     };
@@ -97,7 +120,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let offset_handle = pts.offset_handle();
         app_state.clock = std::sync::Arc::new(pts);
         let identity = clock_identity_from(&name);
-        match taktwerk_net::PtpSlave::bind(iface, identity, offset_handle, app_state.ptp.clone()) {
+        match taktwerk_net::PtpSlave::bind(
+            iface,
+            identity,
+            ptp_profile.domain,
+            offset_handle,
+            app_state.ptp.clone(),
+        ) {
             Ok(slave) => {
                 let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
                 tokio::spawn(async move {
@@ -122,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match taktwerk_net::PtpMaster::bind(
             iface,
             identity,
-            ptp_priority1,
+            ptp_profile,
             app_state.ptp_master.clone(),
         ) {
             Ok(master) => {
@@ -130,7 +159,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::spawn(async move {
                     let _ = master.run(stop_rx).await;
                 });
-                info!(%iface, priority1 = ptp_priority1, "PTP-Master/Grandmaster aktiv");
+                info!(
+                    %iface,
+                    domain = ptp_profile.domain,
+                    priority1 = ptp_profile.priority1,
+                    clock_class = ptp_profile.clock_class,
+                    "PTP-Master/Grandmaster aktiv"
+                );
                 Some(stop_tx)
             }
             Err(e) => {

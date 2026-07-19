@@ -32,6 +32,14 @@ pub struct FileConfig {
     pub channels: Option<u8>,
     pub ptp_slave: Option<bool>,
     pub ptp_master: Option<bool>,
+    /// PTP-Profil-Preset ("st2059") und Einzelwerte (Env-Namen analog).
+    pub ptp_profile: Option<String>,
+    pub ptp_domain: Option<u8>,
+    pub ptp_priority1: Option<u8>,
+    pub ptp_priority2: Option<u8>,
+    pub ptp_clock_class: Option<u8>,
+    pub ptp_sync_ms: Option<u64>,
+    pub ptp_announce_ms: Option<u64>,
     pub audio: Option<String>,
     pub audio_in: Option<String>,
     pub audio_out: Option<String>,
@@ -95,6 +103,21 @@ impl FileConfig {
         set_if_absent(
             "TAKTWERK_PTP_MASTER",
             self.ptp_master.map(bool01).as_deref(),
+        );
+        set_if_absent("TAKTWERK_PTP_PROFILE", self.ptp_profile.as_deref());
+        let s = |v: Option<u8>| v.map(|x| x.to_string());
+        let s64 = |v: Option<u64>| v.map(|x| x.to_string());
+        set_if_absent("TAKTWERK_PTP_DOMAIN", s(self.ptp_domain).as_deref());
+        set_if_absent("TAKTWERK_PTP_PRIORITY1", s(self.ptp_priority1).as_deref());
+        set_if_absent("TAKTWERK_PTP_PRIORITY2", s(self.ptp_priority2).as_deref());
+        set_if_absent(
+            "TAKTWERK_PTP_CLOCK_CLASS",
+            s(self.ptp_clock_class).as_deref(),
+        );
+        set_if_absent("TAKTWERK_PTP_SYNC_MS", s64(self.ptp_sync_ms).as_deref());
+        set_if_absent(
+            "TAKTWERK_PTP_ANNOUNCE_MS",
+            s64(self.ptp_announce_ms).as_deref(),
         );
         set_if_absent("TAKTWERK_AUDIO", self.audio.as_deref());
         set_if_absent("TAKTWERK_AUDIO_IN", self.audio_in.as_deref());

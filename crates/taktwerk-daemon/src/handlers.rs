@@ -166,6 +166,7 @@ pub async fn ptp(State(state): State<AppState>) -> Json<serde_json::Value> {
 
     Json(serde_json::json!({
         "role": role,
+        "domain": state.node.ptp_domain,
         "enabled": state.node.ptp_slave || state.node.ptp_master,
         // Slave-Felder
         "synced": st.synced,

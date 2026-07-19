@@ -340,6 +340,7 @@ mod tests {
             profile: StreamProfile::level_a(2),
             ptp_slave: false,
             ptp_master: false,
+            ptp_domain: 0,
             nmos_host: "0.0.0.0".into(),
             nmos_port: 0,
         });

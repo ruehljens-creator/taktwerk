@@ -379,12 +379,16 @@ impl DelayResp {
 /// Baut eine **Delay_Req**-Nachricht (44 Byte). `origin_timestamp` darf 0 sein —
 /// der Master timestampt den Empfang selbst; entscheidend ist unsere lokale
 /// Sendezeit t3, die der Aufrufer separat festhält.
-pub fn build_delay_req(source: PortIdentity, sequence_id: u16) -> Result<[u8; 44], PtpError> {
+pub fn build_delay_req(
+    source: PortIdentity,
+    sequence_id: u16,
+    domain: u8,
+) -> Result<[u8; 44], PtpError> {
     let header = PtpHeader {
         message_type: MessageType::DelayReq,
         version: 2,
         message_length: 44,
-        domain: 0,
+        domain,
         flags: 0,
         correction: 0,
         source_port: source,
@@ -547,12 +551,13 @@ mod tests {
             clock_identity: [7; 8],
             port: 1,
         };
-        let buf = build_delay_req(src, 99).unwrap();
+        let buf = build_delay_req(src, 99, 127).unwrap();
         let h = PtpHeader::parse(&buf).unwrap();
         assert_eq!(h.message_type, MessageType::DelayReq);
         assert_eq!(h.sequence_id, 99);
         assert_eq!(h.source_port, src);
         assert_eq!(h.control, 0x01);
+        assert_eq!(h.domain, 127, "Domain muss durchgereicht werden");
     }
 
     #[test]
