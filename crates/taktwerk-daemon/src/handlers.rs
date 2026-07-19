@@ -132,21 +132,42 @@ pub async fn traffic(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(state.monitor.lock().unwrap().traffic_json())
 }
 
-/// PTP-Slave-Status (Lock, Offset, Pfad-Verzögerung, Grandmaster).
+/// PTP-Status: Rolle (master/slave/off) + rollenspezifische Felder.
 pub async fn ptp(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let st = state.ptp.lock().unwrap().clone();
-    let gm = st.grandmaster.map(|id| {
+    let fmt_id = |id: [u8; 8]| {
         id.iter()
             .map(|b| format!("{b:02x}"))
             .collect::<Vec<_>>()
             .join(":")
-    });
+    };
+    let role = if state.node.ptp_master {
+        "master"
+    } else if state.node.ptp_slave {
+        "slave"
+    } else {
+        "off"
+    };
+
+    // Slave-Sicht.
+    let st = state.ptp.lock().unwrap().clone();
+    let grandmaster = st.grandmaster.map(fmt_id);
+    // Master-Sicht.
+    let m = state.ptp_master.lock().unwrap().clone();
+
     Json(serde_json::json!({
-        "enabled": state.node.ptp_slave,
+        "role": role,
+        "enabled": state.node.ptp_slave || state.node.ptp_master,
+        // Slave-Felder
         "synced": st.synced,
         "offset_ns": st.offset_ns,
         "path_delay_ns": st.path_delay_ns,
-        "grandmaster": gm,
+        "grandmaster": grandmaster,
+        // Master-Felder
+        "master_active": m.active,
+        "announces_sent": m.announces_sent,
+        "syncs_sent": m.syncs_sent,
+        "delay_resps_sent": m.delay_resps_sent,
+        "better_master": m.better_master.map(fmt_id),
     }))
 }
 

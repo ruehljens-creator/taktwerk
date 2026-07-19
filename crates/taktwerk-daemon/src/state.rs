@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use taktwerk_core::clock::{SystemTimeSource, TimeSource};
 use taktwerk_core::StreamProfile;
-use taktwerk_net::PtpSlaveStatus;
+use taktwerk_net::{PtpMasterStatus, PtpSlaveStatus};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
@@ -22,6 +22,8 @@ pub struct NodeInfo {
     pub profile: StreamProfile,
     /// Ob der PTP-Slave (Lock an Grandmaster) aktiviert ist.
     pub ptp_slave: bool,
+    /// Ob der PTP-Master/Grandmaster-Modus aktiviert ist.
+    pub ptp_master: bool,
     /// NMOS-Host (für die Kreuzschiene, um den eigenen Receiver zu adressieren).
     pub nmos_host: String,
     /// NMOS-Port.
@@ -94,6 +96,8 @@ pub struct AppState {
     pub clock: Arc<dyn TimeSource>,
     /// Live-Status des PTP-Slaves (leer, wenn Slave nicht aktiv).
     pub ptp: Arc<Mutex<PtpSlaveStatus>>,
+    /// Live-Status des PTP-Masters (leer, wenn Master nicht aktiv).
+    pub ptp_master: Arc<Mutex<PtpMasterStatus>>,
     /// Per NMOS-mDNS entdeckte fremde Nodes (Instanz → Peer), für die Matrix.
     pub nmos_peers: Arc<Mutex<HashMap<String, NmosPeer>>>,
 }
@@ -108,6 +112,7 @@ impl AppState {
             monitor: Arc::new(Mutex::new(TrafficMonitor::default())),
             clock: Arc::new(SystemTimeSource),
             ptp: Arc::new(Mutex::new(PtpSlaveStatus::default())),
+            ptp_master: Arc::new(Mutex::new(PtpMasterStatus::default())),
             nmos_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }

@@ -79,6 +79,15 @@ impl PtpTimestamp {
         self.seconds as u128 * 1_000_000_000 + self.nanos as u128
     }
 
+    /// Baut einen Zeitstempel aus einer Gesamt-Nanosekundenzahl (negativ → 0).
+    pub fn from_nanos(total: i128) -> Self {
+        let total = total.max(0) as u128;
+        Self {
+            seconds: (total / 1_000_000_000) as u64,
+            nanos: (total % 1_000_000_000) as u32,
+        }
+    }
+
     /// Parst 10 Byte (6 Byte Sekunden BE + 4 Byte Nanos BE).
     pub fn parse(b: &[u8]) -> Result<Self, PtpError> {
         if b.len() < Self::LEN {
@@ -295,6 +304,24 @@ impl TimestampedMsg {
         let timestamp = PtpTimestamp::parse(&b[34..44])?;
         Ok(Self { header, timestamp })
     }
+
+    /// Serialisiert eine **Sync**- oder **Follow_Up**-Nachricht (Master-Seite).
+    /// Setzt Länge und Control passend zum Nachrichtentyp.
+    pub fn write(&self, out: &mut [u8]) -> Result<(), PtpError> {
+        if out.len() < Self::LEN {
+            return Err(PtpError::TooShort);
+        }
+        let mut header = self.header;
+        header.message_length = Self::LEN as u16;
+        header.control = match header.message_type {
+            MessageType::Sync => 0x00,
+            MessageType::FollowUp => 0x02,
+            _ => return Err(PtpError::WrongType),
+        };
+        header.write(out)?;
+        self.timestamp.write(&mut out[34..44])?;
+        Ok(())
+    }
 }
 
 /// Eine **Delay_Resp**-Nachricht: der Master timestampt den Empfang unseres
@@ -330,6 +357,22 @@ impl DelayResp {
                 port: u16::from_be_bytes([b[52], b[53]]),
             },
         })
+    }
+
+    /// Serialisiert eine **Delay_Resp** (Master-Antwort auf einen Delay_Req).
+    pub fn write(&self, out: &mut [u8]) -> Result<(), PtpError> {
+        if out.len() < Self::LEN {
+            return Err(PtpError::TooShort);
+        }
+        let mut header = self.header;
+        header.message_type = MessageType::DelayResp;
+        header.message_length = Self::LEN as u16;
+        header.control = 0x03; // Delay_Resp
+        header.write(out)?;
+        self.receive_timestamp.write(&mut out[34..44])?;
+        out[44..52].copy_from_slice(&self.requesting_port.clock_identity);
+        out[52..54].copy_from_slice(&self.requesting_port.port.to_be_bytes());
+        Ok(())
     }
 }
 
@@ -548,6 +591,76 @@ mod tests {
             5 * 1_000_000_000 + 500
         );
         assert_eq!(resp.requesting_port.clock_identity, [7u8; 8]);
+    }
+
+    #[test]
+    fn timestamp_from_nanos_roundtrip() {
+        let ts = PtpTimestamp::from_nanos(42 * 1_000_000_000 + 123_456);
+        assert_eq!(ts.seconds, 42);
+        assert_eq!(ts.nanos, 123_456);
+        assert_eq!(PtpTimestamp::from_nanos(-5).seconds, 0); // negativ → 0
+    }
+
+    #[test]
+    fn timestamped_write_roundtrip() {
+        for mt in [MessageType::Sync, MessageType::FollowUp] {
+            let msg = TimestampedMsg {
+                header: PtpHeader {
+                    message_type: mt,
+                    version: 2,
+                    message_length: 0,
+                    domain: 0,
+                    flags: 0x0200,
+                    correction: 0,
+                    source_port: PortIdentity {
+                        clock_identity: [0x42; 8],
+                        port: 1,
+                    },
+                    sequence_id: 11,
+                    control: 0,
+                    log_message_interval: -3,
+                },
+                timestamp: PtpTimestamp::from_nanos(7_000_000_042),
+            };
+            let mut buf = [0u8; TimestampedMsg::LEN];
+            msg.write(&mut buf).unwrap();
+            let parsed = TimestampedMsg::parse(&buf).unwrap();
+            assert_eq!(parsed.header.message_type, mt);
+            assert_eq!(parsed.timestamp, msg.timestamp);
+            assert_eq!(parsed.header.sequence_id, 11);
+        }
+    }
+
+    #[test]
+    fn delay_resp_write_roundtrip() {
+        let resp = DelayResp {
+            header: PtpHeader {
+                message_type: MessageType::DelayResp,
+                version: 2,
+                message_length: 0,
+                domain: 0,
+                flags: 0,
+                correction: 0,
+                source_port: PortIdentity {
+                    clock_identity: [0x55; 8],
+                    port: 1,
+                },
+                sequence_id: 88,
+                control: 0,
+                log_message_interval: 0x7f,
+            },
+            receive_timestamp: PtpTimestamp::from_nanos(9_000_000_500),
+            requesting_port: PortIdentity {
+                clock_identity: [0x77; 8],
+                port: 2,
+            },
+        };
+        let mut buf = [0u8; DelayResp::LEN];
+        resp.write(&mut buf).unwrap();
+        let parsed = DelayResp::parse(&buf).unwrap();
+        assert_eq!(parsed.header.sequence_id, 88);
+        assert_eq!(parsed.receive_timestamp, resp.receive_timestamp);
+        assert_eq!(parsed.requesting_port, resp.requesting_port);
     }
 
     #[test]

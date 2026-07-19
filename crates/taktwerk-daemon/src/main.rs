@@ -58,15 +58,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 7789)));
-    let ptp_slave = std::env::var("TAKTWERK_PTP_SLAVE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    let flag = |k: &str| {
+        std::env::var(k)
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    };
+    let ptp_slave = flag("TAKTWERK_PTP_SLAVE");
+    let ptp_master = flag("TAKTWERK_PTP_MASTER");
+    // Master und Slave schließen sich aus — Master hat Vorrang.
+    let (ptp_master, ptp_slave) = if ptp_master && ptp_slave {
+        error!("PTP: Master und Slave gleichzeitig gesetzt — Master hat Vorrang");
+        (true, false)
+    } else {
+        (ptp_master, ptp_slave)
+    };
+    let ptp_priority1: u8 = std::env::var("TAKTWERK_PTP_PRIORITY1")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(128);
 
     let node = NodeInfo {
         name: name.clone(),
         interface: iface,
         profile: StreamProfile::aes67(channels),
         ptp_slave,
+        ptp_master,
         nmos_host: iface.to_string(),
         nmos_port: nmos_http.port(),
     };
@@ -91,6 +107,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 error!("PTP-Slave-Start fehlgeschlagen: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // PTP-Master/Grandmaster optional: Announce/Sync/Follow_Up senden, Delay_Req
+    // beantworten. Der Guard hält den Master am Leben.
+    let _ptp_master_guard = if ptp_master && !iface.is_unspecified() {
+        let identity = clock_identity_from(&name);
+        match taktwerk_net::PtpMaster::bind(
+            iface,
+            identity,
+            ptp_priority1,
+            app_state.ptp_master.clone(),
+        ) {
+            Ok(master) => {
+                let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+                tokio::spawn(async move {
+                    let _ = master.run(stop_rx).await;
+                });
+                info!(%iface, priority1 = ptp_priority1, "PTP-Master/Grandmaster aktiv");
+                Some(stop_tx)
+            }
+            Err(e) => {
+                error!("PTP-Master-Start fehlgeschlagen: {e}");
                 None
             }
         }
