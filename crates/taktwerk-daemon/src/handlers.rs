@@ -265,6 +265,7 @@ pub async fn tx_start(
         ssrc: 0x5441_4B54, // "TAKT"
         node_name: state.node.name.clone(),
         clock: state.clock.clone(),
+        refclk: state.ptp_refclk(),
     };
 
     let (shutdown, packets, handle) =

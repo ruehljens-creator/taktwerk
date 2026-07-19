@@ -112,6 +112,8 @@ pub struct TxParams {
     pub node_name: String,
     /// Media-Clock für den RTP-Start-Timestamp (System- oder PTP-gelockt).
     pub clock: Arc<dyn taktwerk_core::clock::TimeSource>,
+    /// RFC-7273-Clock-Referenz für die SDP (echte GMID bei aktivem PTP), sonst None.
+    pub refclk: Option<PtpRefClock>,
 }
 
 /// Startet den TX-Loop und gibt (Shutdown-Sender, Paketzähler, JoinHandle) zurück.
@@ -133,6 +135,7 @@ pub fn start_tx(
         ssrc,
         node_name,
         clock,
+        refclk,
     } = params;
 
     let mcfg = MulticastConfig::new(group, port).with_interface(iface);
@@ -149,11 +152,8 @@ pub fn start_tx(
         port,
         payload_type,
         profile,
-        refclk: Some(PtpRefClock {
-            // Platzhalter-GMID bis PTP steht (Phase 1); Struktur bleibt gleich.
-            gmid: "00-00-00-FF-FE-00-00-00".into(),
-            domain: 0,
-        }),
+        // Echte PTP-Grandmaster-Referenz (falls PTP aktiv), sonst kein ts-refclk.
+        refclk,
         mediaclk_offset: 0,
     };
     let announcer = SapAnnouncer::new(sap_sock, iface, &session);

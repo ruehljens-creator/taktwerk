@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use taktwerk_core::clock::{SystemTimeSource, TimeSource};
+use taktwerk_core::sdp::PtpRefClock;
 use taktwerk_core::StreamProfile;
 use taktwerk_net::{PtpMasterStatus, PtpSlaveStatus};
 use tokio::sync::watch;
@@ -110,6 +111,24 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// RFC-7273-Clock-Referenz für ausgehende SDP je nach PTP-Rolle:
+    /// **Master** = eigene Clock-Identity (wir sind der GM), **Slave** = die
+    /// gelernte Grandmaster-Identity (falls schon gesehen), sonst `None`
+    /// (kein PTP → kein `a=ts-refclk`).
+    pub fn ptp_refclk(&self) -> Option<PtpRefClock> {
+        let id = if self.node.ptp_master {
+            Some(crate::clock_identity_from(&self.node.name))
+        } else if self.node.ptp_slave {
+            self.ptp.lock().unwrap().grandmaster
+        } else {
+            None
+        }?;
+        Some(PtpRefClock {
+            gmid: fmt_eui64(id),
+            domain: 0,
+        })
+    }
+
     pub fn new(node: NodeInfo) -> Self {
         Self {
             node: Arc::new(node),
@@ -123,6 +142,14 @@ impl AppState {
             nmos_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+}
+
+/// Formatiert eine EUI-64-Clock-Identity als `XX-XX-…-XX` (RFC-7273-gmid).
+fn fmt_eui64(id: [u8; 8]) -> String {
+    id.iter()
+        .map(|b| format!("{b:02X}"))
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 /// Aktuelle Unix-Zeit in Sekunden (für `last_seen`).
