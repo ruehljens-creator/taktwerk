@@ -20,6 +20,7 @@
 
 pub mod clock;
 pub mod dsp;
+pub mod jitter;
 pub mod ptp;
 pub mod rtp;
 pub mod sap;

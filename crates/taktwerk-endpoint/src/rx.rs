@@ -6,10 +6,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use taktwerk_audio::AudioBackend;
+use taktwerk_core::jitter::JitterBuffer;
 use taktwerk_net::RtpReceiver;
 use tokio::sync::{mpsc, watch};
 
 use crate::audio_err;
+
+/// Reorder-Tiefe des Jitter-Puffers in Paketen (≤ so viel Zusatzlatenz).
+const JITTER_DEPTH: usize = 4;
 
 /// Ein Traffic-Ereignis (Absender, Datagramm-Größe) — vom RX-Strom optional an
 /// einen Beobachter (z. B. den Traffic-Monitor des Daemons) gemeldet.
@@ -25,15 +29,20 @@ pub struct RxStream {
     packets_recv: Arc<AtomicU64>,
     /// Optionaler Traffic-Beobachter (entkoppelt: kennt keine Daemon-Typen).
     traffic: Option<mpsc::UnboundedSender<TrafficEvent>>,
+    /// Reorder-/Concealment-Puffer (Netz-Robustheit vor der Wiedergabe).
+    jitter: JitterBuffer,
 }
 
 impl RxStream {
     pub fn new(receiver: RtpReceiver, backend: Box<dyn AudioBackend>) -> Self {
+        let p = receiver.profile();
+        let silence_len = p.frames_per_packet() as usize * p.channels as usize;
         Self {
             receiver,
             backend,
             packets_recv: Arc::new(AtomicU64::new(0)),
             traffic: None,
+            jitter: JitterBuffer::new(silence_len, JITTER_DEPTH),
         }
     }
 
@@ -53,18 +62,32 @@ impl RxStream {
         self.packets_recv.clone()
     }
 
-    /// Empfängt genau ein Paket und schreibt es ins Backend.
-    pub async fn pump_once(&mut self) -> io::Result<()> {
-        let pkt = self.receiver.recv().await?;
-        self.backend
-            .write_playback(&pkt.samples)
-            .map_err(audio_err)?;
+    /// Verarbeitet ein empfangenes Paket: Traffic melden, zählen, durch den
+    /// Jitter-Puffer schleusen und alle jetzt fälligen (geordneten, ggf. mit
+    /// Stille gefüllten) Blöcke ins Backend schreiben.
+    fn handle_packet(&mut self, pkt: taktwerk_net::ReceivedPacket) -> io::Result<()> {
         if let Some(tx) = &self.traffic {
             let _ = tx.send((pkt.from, pkt.bytes));
         }
         let n = self.packets_recv.fetch_add(1, Ordering::Relaxed) + 1;
-        tracing::trace!(seq = pkt.header.sequence, packets = n, "RX pump");
+        let mut out = Vec::new();
+        self.jitter.push(pkt.header.sequence, pkt.samples, &mut out);
+        for block in &out {
+            self.backend.write_playback(block).map_err(audio_err)?;
+        }
+        tracing::trace!(
+            seq = pkt.header.sequence,
+            packets = n,
+            emitted = out.len(),
+            "RX pump"
+        );
         Ok(())
+    }
+
+    /// Empfängt genau ein Paket und verarbeitet es.
+    pub async fn pump_once(&mut self) -> io::Result<()> {
+        let pkt = self.receiver.recv().await?;
+        self.handle_packet(pkt)
     }
 
     /// Läuft, bis `shutdown` `true` meldet oder der Kanal schließt.
@@ -72,13 +95,7 @@ impl RxStream {
         loop {
             tokio::select! {
                 pkt = self.receiver.recv() => {
-                    let pkt = pkt?;
-                    self.backend.write_playback(&pkt.samples).map_err(audio_err)?;
-                    if let Some(tx) = &self.traffic {
-                        let _ = tx.send((pkt.from, pkt.bytes));
-                    }
-                    let n = self.packets_recv.fetch_add(1, Ordering::Relaxed) + 1;
-                    tracing::trace!(seq = pkt.header.sequence, packets = n, "RX pump");
+                    self.handle_packet(pkt?)?;
                 }
                 res = shutdown.changed() => {
                     if res.is_err() || *shutdown.borrow() {
@@ -86,6 +103,12 @@ impl RxStream {
                     }
                 }
             }
+        }
+        // Restpuffer beim Stopp ausgeben (geordnet, Lücken als Stille).
+        let mut out = Vec::new();
+        self.jitter.flush(&mut out);
+        for block in &out {
+            let _ = self.backend.write_playback(block);
         }
         Ok(())
     }

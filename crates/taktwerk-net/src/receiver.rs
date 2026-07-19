@@ -85,6 +85,12 @@ impl RtpReceiver {
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.socket.local_addr()
     }
+
+    /// Das Stream-Profil dieses Empfaengers (fuer nachgelagerte Stufen wie den
+    /// Jitter-Puffer, der die Silence-Blockgroesse daraus ableitet).
+    pub fn profile(&self) -> StreamProfile {
+        self.profile
+    }
 }
 
 #[cfg(test)]
