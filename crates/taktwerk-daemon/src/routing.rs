@@ -107,33 +107,45 @@ impl ReceiverControl for DaemonReceiverControl {
 /// **Receiver** (eigener, inkl. NMOS-Koordinaten für den Koppelpunkt).
 pub async fn registry(State(state): State<AppState>) -> Json<Value> {
     let n = &state.node;
-    // Eigener Sender (der Default-Stream, den wir anbieten).
-    let mut senders = vec![json!({
-        "id": uuid_from(&format!("{}:sender", n.name)),
-        "name": n.name,
-        "group": "239.69.83.67",
-        "port": 5004,
-        "channels": n.profile.channels,
-        "via": "self",
-    })];
-    // Tatsächlich laufende eigene Sende-Ströme (Multi-Stream).
-    {
+    // Momentaufnahme der eigenen laufenden Sende-Ströme (Multi-Stream).
+    let live: Vec<(String, u8)> = {
         let tx = state.tx.lock().unwrap();
-        for (id, c) in tx.iter() {
+        tx.iter().map(|(id, c)| (id.clone(), c.channels)).collect()
+    };
+    let live_keys: std::collections::HashSet<String> =
+        live.iter().map(|(id, _)| id.clone()).collect();
+
+    let mut senders: Vec<Value> = Vec::new();
+    if live.is_empty() {
+        // Kein Live-TX → das kanonische Angebot des Knotens zeigen.
+        senders.push(json!({
+            "id": uuid_from(&format!("{}:sender", n.name)),
+            "name": n.name,
+            "group": "239.69.83.67",
+            "port": 5004,
+            "channels": n.profile.channels,
+            "via": "self",
+        }));
+    } else {
+        for (id, channels) in &live {
+            let (group, port) = id.split_once(':').unwrap_or((id.as_str(), "5004"));
             senders.push(json!({
                 "id": format!("self-{id}"),
                 "name": format!("{} · {id}", n.name),
-                "group": id.split(':').next().unwrap_or(""),
-                "port": c.dest.as_deref().and_then(|d| d.rsplit(':').next()).unwrap_or("5004"),
-                "channels": c.channels,
+                "group": group,
+                "port": port,
+                "channels": channels,
                 "via": "self-live",
             }));
         }
     }
-    // Entdeckte Sender (SAP/RAVENNA).
+    // Entdeckte Sender (SAP/RAVENNA) — eigene SAP-Echos der Live-Ströme auslassen.
     {
         let disc = state.discovered.lock().unwrap();
         for e in disc.values() {
+            if live_keys.contains(&format!("{}:{}", e.multicast_addr, e.port)) {
+                continue;
+            }
             senders.push(json!({
                 "id": format!("disc-{}", e.session_name),
                 "name": e.session_name,
