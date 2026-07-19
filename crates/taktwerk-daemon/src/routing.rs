@@ -17,7 +17,7 @@ use taktwerk_router::{controller, ReceiverControl};
 use taktwerk_discovery::MdnsDiscovery;
 use tracing::{debug, info, warn};
 
-use crate::state::{now_unix, AppState, NmosPeer};
+use crate::state::{now_unix, AppState, NmosPeer, RxControl, NMOS_RX_ID};
 use crate::tasks::start_rx;
 
 /// Baut die SDP eines Streams aus Gruppe/Port/Kanälen.
@@ -35,15 +35,14 @@ fn build_sdp(host: &str, group: &str, port: u16, channels: u8) -> String {
     .to_sdp()
 }
 
-/// Stoppt ein laufendes RX-Abonnement (ohne zu awaiten).
+/// Stoppt das per Kreuzschiene gesteuerte RX-Abonnement (ohne zu awaiten).
 fn stop_rx(state: &AppState) {
-    let mut rx = state.rx.lock().unwrap();
-    rx.running = false;
-    if let Some(s) = rx.shutdown.take() {
-        let _ = s.send(true);
+    if let Some(mut c) = state.rx.lock().unwrap().remove(NMOS_RX_ID) {
+        if let Some(s) = c.shutdown.take() {
+            let _ = s.send(true);
+        }
+        // Handle wird verworfen (Task läuft aus).
     }
-    rx.handle.take(); // Task läuft aus, Handle verwerfen
-    rx.active_sdp = None;
 }
 
 /// Die steuerbare Senke: setzt ein IS-05-`PATCH` in ein RX-Abonnement um.
@@ -70,14 +69,18 @@ impl ReceiverControl for DaemonReceiverControl {
             state.monitor.clone(),
         )
         .map_err(|e| e.to_string())?;
-        let mut rx = state.rx.lock().unwrap();
-        rx.running = true;
-        rx.source = Some(format!("{group}:{port}"));
-        rx.channels = profile.channels;
-        rx.packets = packets;
-        rx.shutdown = Some(shutdown);
-        rx.handle = Some(handle);
-        rx.active_sdp = Some(sdp.to_string());
+        state.rx.lock().unwrap().insert(
+            NMOS_RX_ID.to_string(),
+            RxControl {
+                running: true,
+                source: Some(format!("{group}:{port}")),
+                channels: profile.channels,
+                packets,
+                shutdown: Some(shutdown),
+                handle: Some(handle),
+                active_sdp: Some(sdp.to_string()),
+            },
+        );
         Ok(())
     }
 
@@ -87,11 +90,16 @@ impl ReceiverControl for DaemonReceiverControl {
     }
 
     fn active_sdp(&self) -> Option<String> {
-        self.0.rx.lock().unwrap().active_sdp.clone()
+        self.0
+            .rx
+            .lock()
+            .unwrap()
+            .get(NMOS_RX_ID)
+            .and_then(|c| c.active_sdp.clone())
     }
 
     fn connected(&self) -> bool {
-        self.0.rx.lock().unwrap().running
+        self.0.rx.lock().unwrap().contains_key(NMOS_RX_ID)
     }
 }
 
@@ -108,6 +116,20 @@ pub async fn registry(State(state): State<AppState>) -> Json<Value> {
         "channels": n.profile.channels,
         "via": "self",
     })];
+    // Tatsächlich laufende eigene Sende-Ströme (Multi-Stream).
+    {
+        let tx = state.tx.lock().unwrap();
+        for (id, c) in tx.iter() {
+            senders.push(json!({
+                "id": format!("self-{id}"),
+                "name": format!("{} · {id}", n.name),
+                "group": id.split(':').next().unwrap_or(""),
+                "port": c.dest.as_deref().and_then(|d| d.rsplit(':').next()).unwrap_or("5004"),
+                "channels": c.channels,
+                "via": "self-live",
+            }));
+        }
+    }
     // Entdeckte Sender (SAP/RAVENNA).
     {
         let disc = state.discovered.lock().unwrap();
@@ -122,14 +144,21 @@ pub async fn registry(State(state): State<AppState>) -> Json<Value> {
             }));
         }
     }
-    // Receiver-Spalten: eigener + alle per NMOS-mDNS entdeckten fremden Nodes.
+    // Receiver-Spalten: eigener (Kreuzschienen-Sink) + entdeckte fremde NMOS-Nodes.
+    let (self_connected, self_source) = {
+        let rx = state.rx.lock().unwrap();
+        match rx.get(NMOS_RX_ID) {
+            Some(c) => (true, c.source.clone()),
+            None => (false, None),
+        }
+    };
     let mut receivers = vec![json!({
         "id": uuid_from(&format!("{}:receiver", n.name)),
         "name": format!("{} (self)", n.name),
         "nmos_host": n.nmos_host,
         "nmos_port": n.nmos_port,
-        "connected": state.rx.lock().unwrap().running,
-        "source": state.rx.lock().unwrap().source,
+        "connected": self_connected,
+        "source": self_source,
     })];
     {
         let peers = state.nmos_peers.lock().unwrap();

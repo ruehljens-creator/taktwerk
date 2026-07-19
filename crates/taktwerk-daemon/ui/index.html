@@ -337,13 +337,20 @@ async function refresh() {
     $("n-iface").textContent = node.interface;
     $("n-profile").textContent = `${node.profile.channels} ch · ${node.profile.sample_rate} Hz · ${node.profile.encoding} · ${node.profile.ptime_us} µs`;
 
-    setStatus($("tx-status"), tx.running, tx.running ? t("st_running") : t("st_off"));
-    $("tx-packets").textContent = fmtNum(tx.packets_sent);
-    $("tx-dest").textContent = tx.dest ? "→ " + tx.dest : "";
+    // Multi-Stream: tx/rx sind Listen — Panel zeigt Summe + Anzahl.
+    const txL = Array.isArray(tx) ? tx : [];
+    const txPk = txL.reduce((s, x) => s + (x.packets_sent || 0), 0);
+    setStatus($("tx-status"), txL.length > 0, txL.length > 0 ? t("st_running") : t("st_off"));
+    $("tx-packets").textContent = fmtNum(txPk);
+    $("tx-dest").textContent = txL.length === 1 ? "→ " + txL[0].dest
+      : (txL.length > 1 ? txL.length + " × TX" : "");
 
-    setStatus($("rx-status"), rx.running, rx.running ? t("st_running") : t("st_off"));
-    $("rx-packets").textContent = fmtNum(rx.packets_recv);
-    $("rx-src").textContent = rx.source ? "← " + rx.source : "";
+    const rxL = Array.isArray(rx) ? rx : [];
+    const rxPk = rxL.reduce((s, x) => s + (x.packets_recv || 0), 0);
+    setStatus($("rx-status"), rxL.length > 0, rxL.length > 0 ? t("st_running") : t("st_off"));
+    $("rx-packets").textContent = fmtNum(rxPk);
+    $("rx-src").textContent = rxL.length === 1 ? "← " + rxL[0].source
+      : (rxL.length > 1 ? rxL.length + " × RX" : "");
 
     const body = $("disc-body"); body.innerHTML = "";
     if (disc.length === 0) { $("disc-empty").style.display = ""; $("disc-table").style.display = "none"; }

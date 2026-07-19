@@ -172,14 +172,16 @@ curl -X POST localhost:7788/streams/tx/start -H 'content-type: application/json'
 # Hohe Kanalzahl (bis 64): Paketzeit wird automatisch MTU-sicher gewählt
 #   ≤8→1ms · ≤16→500µs · ≤32→250µs · ≤64→125µs (je 1152 B Payload, kein Jumbo)
 curl -X POST localhost:7788/streams/tx/start -H 'content-type: application/json' -d '{"channels":64}'
-curl localhost:7788/streams/tx           # {"running":true,"packets_sent":...}
+curl localhost:7788/streams/tx           # Liste aller TX-Ströme [{id,dest,packets_sent},…]
 curl localhost:7788/streams/discovered   # per SAP entdeckte Streams
 
-# Einen Stream empfangen (abonnieren):
+# Mehrere Ströme gleichzeitig (Multi-Stream): einfach weitere start-Aufrufe mit
+# anderer group/port. Schlüssel je Strom = "group:port".
 curl -X POST localhost:7788/streams/rx/subscribe -H 'content-type: application/json' -d '{"group":"239.69.83.67","port":5004,"channels":2}'
-curl localhost:7788/streams/rx           # {"running":true,"packets_recv":...}
-curl -X POST localhost:7788/streams/rx/unsubscribe
-curl -X POST localhost:7788/streams/tx/stop
+curl localhost:7788/streams/rx           # Liste aller RX-Abos [{id,source,packets_recv},…]
+# Gezielt einen Strom stoppen (ohne ?id= → alle):
+curl -X POST 'localhost:7788/streams/rx/unsubscribe?id=239.69.83.67:5004'
+curl -X POST 'localhost:7788/streams/tx/stop?id=239.69.83.67:5004'
 ```
 
 ---

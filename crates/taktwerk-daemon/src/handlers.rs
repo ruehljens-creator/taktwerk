@@ -14,7 +14,7 @@
 use std::net::Ipv4Addr;
 use std::sync::atomic::Ordering;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Html;
 use axum::Json;
@@ -22,8 +22,14 @@ use serde::{Deserialize, Serialize};
 
 use taktwerk_core::StreamProfile;
 
-use crate::state::AppState;
+use crate::state::{AppState, RxControl, TxControl};
 use crate::tasks::{start_rx, start_tx, TxParams};
+
+/// Query-Parameter `?id=` zum gezielten Stoppen eines Stroms (fehlt → alle).
+#[derive(Deserialize)]
+pub struct StreamIdQuery {
+    pub id: Option<String>,
+}
 
 // ---------- DTOs ----------
 
@@ -69,6 +75,8 @@ pub struct DiscoveredDto {
 
 #[derive(Serialize)]
 pub struct TxStatusDto {
+    /// Stream-Schlüssel ("group:port").
+    pub id: String,
     pub running: bool,
     pub dest: Option<String>,
     pub channels: u8,
@@ -87,6 +95,8 @@ pub struct TxStartRequest {
 
 #[derive(Serialize)]
 pub struct RxStatusDto {
+    /// Abo-Schlüssel ("group:port" bzw. der Kreuzschienen-Receiver).
+    pub id: String,
     pub running: bool,
     pub source: Option<String>,
     pub channels: u8,
@@ -191,8 +201,27 @@ pub async fn discovered(State(state): State<AppState>) -> Json<Vec<DiscoveredDto
     Json(list)
 }
 
-pub async fn tx_status(State(state): State<AppState>) -> Json<TxStatusDto> {
-    Json(current_tx_status(&state))
+/// `GET /streams/tx` — Liste **aller** laufenden Sende-Ströme.
+pub async fn tx_status(State(state): State<AppState>) -> Json<Vec<TxStatusDto>> {
+    Json(list_tx(&state))
+}
+
+fn list_tx(state: &AppState) -> Vec<TxStatusDto> {
+    let mut v: Vec<TxStatusDto> = state
+        .tx
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(id, c)| TxStatusDto {
+            id: id.clone(),
+            running: c.running,
+            dest: c.dest.clone(),
+            channels: c.channels,
+            packets_sent: c.packets.load(Ordering::Relaxed),
+        })
+        .collect();
+    v.sort_by(|a, b| a.id.cmp(&b.id));
+    v
 }
 
 pub async fn tx_start(
@@ -220,9 +249,9 @@ pub async fn tx_start(
         ));
     }
 
-    let mut tx = state.tx.lock().unwrap();
-    if tx.running {
-        return Err((StatusCode::CONFLICT, "TX läuft bereits".into()));
+    let id = format!("{group}:{port}");
+    if state.tx.lock().unwrap().contains_key(&id) {
+        return Err((StatusCode::CONFLICT, format!("TX {id} läuft bereits")));
     }
 
     // Paketzeit passend zur Kanalzahl (≤8 = Level A/1 ms, sonst kürzer → MTU-safe).
@@ -241,44 +270,65 @@ pub async fn tx_start(
     let (shutdown, packets, handle) =
         start_tx(params).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    tx.running = true;
-    tx.dest = Some(format!("{group}:{port}"));
-    tx.channels = channels;
-    tx.packets = packets;
-    tx.shutdown = Some(shutdown);
-    tx.handle = Some(handle);
-    drop(tx);
-
-    Ok(Json(current_tx_status(&state)))
-}
-
-pub async fn tx_stop(State(state): State<AppState>) -> Json<TxStatusDto> {
-    let (shutdown, handle) = {
-        let mut tx = state.tx.lock().unwrap();
-        tx.running = false;
-        (tx.shutdown.take(), tx.handle.take())
+    let dto = TxStatusDto {
+        id: id.clone(),
+        running: true,
+        dest: Some(id.clone()),
+        channels,
+        packets_sent: packets.load(Ordering::Relaxed),
     };
-    if let Some(s) = shutdown {
-        let _ = s.send(true);
-    }
-    if let Some(h) = handle {
-        let _ = h.await;
-    }
-    Json(current_tx_status(&state))
+    state.tx.lock().unwrap().insert(
+        id.clone(),
+        TxControl {
+            running: true,
+            dest: Some(id),
+            channels,
+            packets,
+            shutdown: Some(shutdown),
+            handle: Some(handle),
+        },
+    );
+    Ok(Json(dto))
 }
 
-fn current_tx_status(state: &AppState) -> TxStatusDto {
-    let tx = state.tx.lock().unwrap();
-    TxStatusDto {
-        running: tx.running,
-        dest: tx.dest.clone(),
-        channels: tx.channels,
-        packets_sent: tx.packets.load(Ordering::Relaxed),
+/// `POST /streams/tx/stop?id=group:port` — einen Strom stoppen (ohne `id` alle).
+pub async fn tx_stop(
+    State(state): State<AppState>,
+    Query(q): Query<StreamIdQuery>,
+) -> Json<Vec<TxStatusDto>> {
+    let removed = take_streams(&mut state.tx.lock().unwrap(), q.id.as_deref());
+    for mut c in removed {
+        if let Some(s) = c.shutdown.take() {
+            let _ = s.send(true);
+        }
+        if let Some(h) = c.handle.take() {
+            let _ = h.await;
+        }
     }
+    Json(list_tx(&state))
 }
 
-pub async fn rx_status(State(state): State<AppState>) -> Json<RxStatusDto> {
-    Json(current_rx_status(&state))
+/// `GET /streams/rx` — Liste **aller** laufenden Empfangs-Abos.
+pub async fn rx_status(State(state): State<AppState>) -> Json<Vec<RxStatusDto>> {
+    Json(list_rx(&state))
+}
+
+fn list_rx(state: &AppState) -> Vec<RxStatusDto> {
+    let mut v: Vec<RxStatusDto> = state
+        .rx
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(id, c)| RxStatusDto {
+            id: id.clone(),
+            running: c.running,
+            source: c.source.clone(),
+            channels: c.channels,
+            packets_recv: c.packets.load(Ordering::Relaxed),
+        })
+        .collect();
+    v.sort_by(|a, b| a.id.cmp(&b.id));
+    v
 }
 
 pub async fn rx_subscribe(
@@ -298,9 +348,9 @@ pub async fn rx_subscribe(
         ));
     }
 
-    let mut rx = state.rx.lock().unwrap();
-    if rx.running {
-        return Err((StatusCode::CONFLICT, "RX-Abonnement läuft bereits".into()));
+    let id = format!("{group}:{port}");
+    if state.rx.lock().unwrap().contains_key(&id) {
+        return Err((StatusCode::CONFLICT, format!("RX {id} läuft bereits")));
     }
 
     let profile = StreamProfile::aes67(channels);
@@ -313,38 +363,52 @@ pub async fn rx_subscribe(
     )
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    rx.running = true;
-    rx.source = Some(format!("{group}:{port}"));
-    rx.channels = channels;
-    rx.packets = packets;
-    rx.shutdown = Some(shutdown);
-    rx.handle = Some(handle);
-    drop(rx);
-
-    Ok(Json(current_rx_status(&state)))
-}
-
-pub async fn rx_unsubscribe(State(state): State<AppState>) -> Json<RxStatusDto> {
-    let (shutdown, handle) = {
-        let mut rx = state.rx.lock().unwrap();
-        rx.running = false;
-        (rx.shutdown.take(), rx.handle.take())
+    let dto = RxStatusDto {
+        id: id.clone(),
+        running: true,
+        source: Some(id.clone()),
+        channels,
+        packets_recv: packets.load(Ordering::Relaxed),
     };
-    if let Some(s) = shutdown {
-        let _ = s.send(true);
-    }
-    if let Some(h) = handle {
-        let _ = h.await;
-    }
-    Json(current_rx_status(&state))
+    state.rx.lock().unwrap().insert(
+        id.clone(),
+        RxControl {
+            running: true,
+            source: Some(id),
+            channels,
+            packets,
+            shutdown: Some(shutdown),
+            handle: Some(handle),
+            active_sdp: None,
+        },
+    );
+    Ok(Json(dto))
 }
 
-fn current_rx_status(state: &AppState) -> RxStatusDto {
-    let rx = state.rx.lock().unwrap();
-    RxStatusDto {
-        running: rx.running,
-        source: rx.source.clone(),
-        channels: rx.channels,
-        packets_recv: rx.packets.load(Ordering::Relaxed),
+/// `POST /streams/rx/unsubscribe?id=group:port` — ein Abo lösen (ohne `id` alle).
+pub async fn rx_unsubscribe(
+    State(state): State<AppState>,
+    Query(q): Query<StreamIdQuery>,
+) -> Json<Vec<RxStatusDto>> {
+    let removed = take_streams(&mut state.rx.lock().unwrap(), q.id.as_deref());
+    for mut c in removed {
+        if let Some(s) = c.shutdown.take() {
+            let _ = s.send(true);
+        }
+        if let Some(h) = c.handle.take() {
+            let _ = h.await;
+        }
     }
+    Json(list_rx(&state))
+}
+
+/// Entfernt entweder den Strom `id` oder (bei `None`) alle aus der Map und gibt
+/// die entfernten Steuerzustände zum geordneten Stoppen zurück.
+fn take_streams<T>(map: &mut std::collections::HashMap<String, T>, id: Option<&str>) -> Vec<T> {
+    let keys: Vec<String> = match id {
+        Some(k) if map.contains_key(k) => vec![k.to_string()],
+        Some(_) => vec![],
+        None => map.keys().cloned().collect(),
+    };
+    keys.into_iter().filter_map(|k| map.remove(&k)).collect()
 }

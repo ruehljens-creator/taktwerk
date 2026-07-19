@@ -58,6 +58,10 @@ pub struct DiscoveredEntry {
     pub last_seen: u64,
 }
 
+/// Fester Schlüssel des per NMOS-Kreuzschiene gesteuerten Receivers (ein logischer
+/// Sink, der die Quelle wechselt). REST-Abos nutzen dagegen "group:port".
+pub const NMOS_RX_ID: &str = "nmos-receiver";
+
 /// Steuerzustand des Sende-Stroms (TX).
 #[derive(Default)]
 pub struct TxControl {
@@ -87,8 +91,11 @@ pub struct RxControl {
 pub struct AppState {
     pub node: Arc<NodeInfo>,
     pub discovered: Arc<Mutex<HashMap<u16, DiscoveredEntry>>>,
-    pub tx: Arc<Mutex<TxControl>>,
-    pub rx: Arc<Mutex<RxControl>>,
+    /// Laufende Sende-Ströme (Multi-Stream), Schlüssel = "group:port".
+    pub tx: Arc<Mutex<HashMap<String, TxControl>>>,
+    /// Laufende Empfangs-Abos (Multi-Stream), Schlüssel = "group:port" bzw. der
+    /// feste Schlüssel [`NMOS_RX_ID`] für den per Kreuzschiene gesteuerten Receiver.
+    pub rx: Arc<Mutex<HashMap<String, RxControl>>>,
     /// Geräte- und Traffic-Monitor (SAP/PTP/RTP-Aggregation).
     pub monitor: Arc<Mutex<TrafficMonitor>>,
     /// Media-Clock für RTP-Timestamps — SystemTimeSource oder (bei PTP-Slave)
@@ -107,8 +114,8 @@ impl AppState {
         Self {
             node: Arc::new(node),
             discovered: Arc::new(Mutex::new(HashMap::new())),
-            tx: Arc::new(Mutex::new(TxControl::default())),
-            rx: Arc::new(Mutex::new(RxControl::default())),
+            tx: Arc::new(Mutex::new(HashMap::new())),
+            rx: Arc::new(Mutex::new(HashMap::new())),
             monitor: Arc::new(Mutex::new(TrafficMonitor::default())),
             clock: Arc::new(SystemTimeSource),
             ptp: Arc::new(Mutex::new(PtpSlaveStatus::default())),
