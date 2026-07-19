@@ -111,6 +111,10 @@ fn bool01(b: bool) -> String {
 }
 
 /// Setzt `key` auf `val`, falls `val` vorhanden **und** `key` nicht schon gesetzt.
+///
+/// Hinweis: `set_var` läuft hier nach dem Start der tokio-Worker (`#[tokio::main]`).
+/// Die Worker sind zu diesem Zeitpunkt idle und lesen keine Umgebung; sauber wäre
+/// langfristig, die Config direkt zu konsumieren statt sie über Env zu spiegeln.
 fn set_if_absent(key: &str, val: Option<&str>) {
     if let Some(v) = val {
         if std::env::var_os(key).is_none() {

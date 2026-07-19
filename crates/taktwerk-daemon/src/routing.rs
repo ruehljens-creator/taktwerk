@@ -128,7 +128,10 @@ pub async fn registry(State(state): State<AppState>) -> Json<Value> {
         }));
     } else {
         for (id, channels) in &live {
-            let (group, port) = id.split_once(':').unwrap_or((id.as_str(), "5004"));
+            let (group, port) = id.split_once(':').unwrap_or((id.as_str(), ""));
+            // Port als Zahl liefern (konsistent zu self/disc) — das UI reicht ihn
+            // als `media_port: u16` an /route weiter; ein String würde dort scheitern.
+            let port: u16 = port.parse().unwrap_or(5004);
             senders.push(json!({
                 "id": format!("self-{id}"),
                 "name": format!("{} · {id}", n.name),

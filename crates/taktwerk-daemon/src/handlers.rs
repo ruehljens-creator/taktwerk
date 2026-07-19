@@ -250,10 +250,6 @@ pub async fn tx_start(
     }
 
     let id = format!("{group}:{port}");
-    if state.tx.lock().unwrap().contains_key(&id) {
-        return Err((StatusCode::CONFLICT, format!("TX {id} läuft bereits")));
-    }
-
     // Paketzeit passend zur Kanalzahl (≤8 = Level A/1 ms, sonst kürzer → MTU-safe).
     let profile = StreamProfile::aes67(channels);
     let params = TxParams {
@@ -268,6 +264,13 @@ pub async fn tx_start(
         refclk: state.ptp_refclk(),
     };
 
+    // Lock über Prüfung + Start + Insert halten (start_tx ist synchron, kein
+    // await) — sonst könnten zwei gleichzeitige Requests derselben id beide die
+    // Prüfung passieren und der zweite Insert würde den ersten Task verwaisen.
+    let mut tx_map = state.tx.lock().unwrap();
+    if tx_map.contains_key(&id) {
+        return Err((StatusCode::CONFLICT, format!("TX {id} läuft bereits")));
+    }
     let (shutdown, packets, handle) =
         start_tx(params).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -278,7 +281,7 @@ pub async fn tx_start(
         channels,
         packets_sent: packets.load(Ordering::Relaxed),
     };
-    state.tx.lock().unwrap().insert(
+    tx_map.insert(
         id.clone(),
         TxControl {
             running: true,
@@ -350,7 +353,9 @@ pub async fn rx_subscribe(
     }
 
     let id = format!("{group}:{port}");
-    if state.rx.lock().unwrap().contains_key(&id) {
+    // Wie bei tx_start: Lock über Prüfung + Start + Insert (start_rx ist synchron).
+    let mut rx_map = state.rx.lock().unwrap();
+    if rx_map.contains_key(&id) {
         return Err((StatusCode::CONFLICT, format!("RX {id} läuft bereits")));
     }
 
@@ -371,7 +376,7 @@ pub async fn rx_subscribe(
         channels,
         packets_recv: packets.load(Ordering::Relaxed),
     };
-    state.rx.lock().unwrap().insert(
+    rx_map.insert(
         id.clone(),
         RxControl {
             running: true,

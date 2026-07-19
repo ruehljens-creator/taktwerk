@@ -25,7 +25,15 @@ pub struct JitterStats {
     pub late: u64,
     /// Pakete, die „voraus" ankamen (Lücke davor) — Maß für Umsortierung.
     pub out_of_order: u64,
+    /// Harte Neusynchronisationen nach großem Sequenz-Sprung (Sender-Neustart).
+    pub resyncs: u64,
 }
+
+/// Ab dieser Lücke (in Paketen) wird nicht mehr kaschiert, sondern hart neu
+/// aufgesetzt — ein Sender-Neustart mit zufälliger Sequenznummer würde sonst
+/// zehntausende Stille-Blöcke in einem Rutsch erzeugen. 64 Pakete ≈ 64 ms
+/// (Level A) Verlust sind ohnehin nicht sinnvoll kaschierbar.
+const RESYNC_GAP: i16 = 64;
 
 /// Reorder-/Concealment-Puffer für einen Stream mit fester Blockgröße.
 pub struct JitterBuffer {
@@ -69,10 +77,19 @@ impl JitterBuffer {
             Some(n) => n,
         };
 
-        let diff = seq.wrapping_sub(next) as i16;
+        let mut diff = seq.wrapping_sub(next) as i16;
         if diff < 0 {
             self.stats.late += 1; // älter als erwartet → verwerfen
             return;
+        }
+        if diff > RESYNC_GAP {
+            // Sender-Neustart / Riesen-Lücke: gehaltene Pakete geordnet ausgeben
+            // (Lücken dazwischen als Stille), dann hart auf `seq` neu aufsetzen —
+            // statt die gesamte Lücke Block für Block zu kaschieren.
+            self.flush(out);
+            self.next_seq = Some(seq);
+            self.stats.resyncs += 1;
+            diff = 0; // ab hier ist `seq` das erwartete nächste Paket
         }
         if self.pending.contains_key(&seq) {
             self.stats.duplicate += 1;
@@ -187,6 +204,22 @@ mod tests {
         assert_eq!(jb.stats().late + jb.stats().duplicate, 2);
         let vals: Vec<i32> = out.iter().map(|b| b[0]).collect();
         assert_eq!(vals, vec![1, 2]);
+    }
+
+    #[test]
+    fn huge_gap_resyncs_instead_of_flooding_silence() {
+        let mut jb = JitterBuffer::new(2, 4);
+        let mut out = Vec::new();
+        jb.push(0, pkt(1, 2), &mut out);
+        // Sender-Neustart: Sprung um 30000 — darf KEINE 30000 Stille-Blöcke
+        // erzeugen, sondern hart neu aufsetzen.
+        jb.push(30000, pkt(2, 2), &mut out);
+        jb.push(30001, pkt(3, 2), &mut out);
+        let vals: Vec<i32> = out.iter().map(|b| b[0]).collect();
+        assert_eq!(vals, vec![1, 2, 3], "keine Stille-Flut, nahtloser Resync");
+        assert_eq!(jb.stats().resyncs, 1);
+        assert_eq!(jb.stats().concealed, 0);
+        assert_eq!(jb.stats().out_of_order, 0, "Resync zählt nicht als Reorder");
     }
 
     #[test]

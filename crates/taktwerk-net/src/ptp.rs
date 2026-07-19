@@ -487,7 +487,11 @@ impl PtpMaster {
                     match msg {
                         PtpMessage::Announce(a) => self.note_foreign_announce(&a),
                         PtpMessage::Other(h) if h.message_type == MessageType::DelayReq => {
-                            self.answer_delay_req(&h).await;
+                            // Nur der aktive GM antwortet — sonst kämen bei
+                            // BMCA-Rücktritt doppelte Delay_Resp ins Netz.
+                            if self.is_active() {
+                                self.answer_delay_req(&h).await;
+                            }
                         }
                         _ => {} // eigene/andere Nachrichten ignorieren
                     }
