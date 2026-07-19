@@ -194,8 +194,29 @@ fn clock_identity_from(name: &str) -> [u8; 8] {
     id
 }
 
-/// Beendet den Server sauber bei Ctrl-C.
+/// Beendet den Server sauber bei Ctrl-C **oder SIGTERM** (systemd/launchd stop),
+/// damit der Log-Appender in allen Fällen flusht.
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut term = match signal(SignalKind::terminate()) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("SIGTERM-Handler nicht installierbar: {e}");
+                let _ = tokio::signal::ctrl_c().await;
+                info!("Shutdown-Signal empfangen, beende taktwerkd.");
+                return;
+            }
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
     info!("Shutdown-Signal empfangen, beende taktwerkd.");
 }

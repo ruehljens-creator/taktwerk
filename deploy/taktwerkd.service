@@ -1,0 +1,31 @@
+# systemd-Unit für den Taktwerk-Daemon (Linux).
+# Installation:
+#   sudo install -m755 target/release/taktwerkd /usr/local/bin/taktwerkd
+#   sudo install -m644 deploy/taktwerkd.service /etc/systemd/system/
+#   sudo mkdir -p /etc/taktwerk && sudo cp deploy/taktwerk.example.toml /etc/taktwerk/taktwerk.toml
+#   sudo systemctl daemon-reload && sudo systemctl enable --now taktwerkd
+[Unit]
+Description=Taktwerk AES67 / ST 2110-30 audio-over-IP node
+Documentation=https://github.com/ruehljens-creator/taktwerk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=TAKTWERK_CONFIG=/etc/taktwerk/taktwerk.toml
+ExecStart=/usr/local/bin/taktwerkd
+Restart=on-failure
+RestartSec=2
+# Der Daemon flusht das Debug-Log beim Signal — sauberer Stop.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# Zugriff auf ALSA-Geräte (snd-aloop) für das cpal-Backend.
+SupplementaryGroups=audio
+# Härtung (Multicast/UDP brauchen kein root):
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

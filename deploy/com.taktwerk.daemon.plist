@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd-Service für den Taktwerk-Daemon (macOS).
+  Installation (als LaunchDaemon, läuft ohne Login):
+    sudo cp target/release/taktwerkd /usr/local/bin/taktwerkd
+    sudo mkdir -p /etc/taktwerk && sudo cp deploy/taktwerk.example.toml /etc/taktwerk/taktwerk.toml
+    sudo cp deploy/com.taktwerk.daemon.plist /Library/LaunchDaemons/
+    sudo launchctl load -w /Library/LaunchDaemons/com.taktwerk.daemon.plist
+  Stoppen:  sudo launchctl unload -w /Library/LaunchDaemons/com.taktwerk.daemon.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.taktwerk.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/taktwerkd</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TAKTWERK_CONFIG</key>
+    <string>/etc/taktwerk/taktwerk.toml</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/taktwerkd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/taktwerkd.log</string>
+</dict>
+</plist>

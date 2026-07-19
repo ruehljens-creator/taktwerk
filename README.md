@@ -184,6 +184,21 @@ curl -X POST localhost:7788/streams/tx/stop
 
 ---
 
+## Konfiguration & Autostart
+
+Alle Einstellungen gehen über `TAKTWERK_*`-Umgebungsvariablen **oder** eine
+optionale TOML-Datei (`TAKTWERK_CONFIG`, sonst `./taktwerk.toml` bzw.
+`/etc/taktwerk/taktwerk.toml`). **Env hat Vorrang** vor der Datei. Vorlage:
+[`deploy/taktwerk.example.toml`](deploy/taktwerk.example.toml).
+
+Als Dienst (Dauerbetrieb, sauberer Log-Flush bei Stop):
+
+- **Linux (systemd):** [`deploy/taktwerkd.service`](deploy/taktwerkd.service) —
+  `systemctl enable --now taktwerkd` (Installationsschritte oben in der Datei).
+- **macOS (launchd):** [`deploy/com.taktwerk.daemon.plist`](deploy/com.taktwerk.daemon.plist)
+  als `/Library/LaunchDaemons/` (läuft ohne Login).
+- **Linux virtuelle Soundkarte** vorab einrichten: [`deploy/linux-snd-aloop.sh`](deploy/linux-snd-aloop.sh).
+
 ## Bauen & Testen
 
 ```bash
