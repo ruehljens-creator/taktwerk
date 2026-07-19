@@ -151,6 +151,8 @@ fn classify(datagram: &[u8]) -> Option<PtpMessage> {
 
 /// TwoStep-Flag im PTP-Header (Sync mit two-step → Follow_Up folgt).
 const FLAG_TWO_STEP: u16 = 0x0200;
+/// ptpTimescale-Flag (Announce): unsere Zeit ist die PTP-Zeitskala, nicht ARB.
+const FLAG_PTP_TIMESCALE: u16 = 0x0008;
 
 /// Lokale Systemzeit in Nanosekunden (Software-Timestamp; gleiche Uhr wie
 /// `SystemTimeSource`, damit Offsets zu `PtpTimeSource` zusammenpassen).
@@ -389,7 +391,9 @@ impl PtpMaster {
     async fn send_announce(&mut self) {
         let ds = self.our_dataset();
         let ann = Announce {
-            header: self.base_header(MessageType::Announce, self.announce_seq, 0, 0),
+            // Flag ptpTimescale (0x0008) setzen — sonst deuten Empfänger unsere
+            // Zeit als ARB-Zeitskala ("not using PTP timescale").
+            header: self.base_header(MessageType::Announce, self.announce_seq, 0, FLAG_PTP_TIMESCALE),
             origin_timestamp: PtpTimestamp::from_nanos(now_nanos()),
             current_utc_offset: 37,
             gm_priority1: ds.priority1,
@@ -435,7 +439,8 @@ impl PtpMaster {
 
     async fn answer_delay_req(&mut self, req: &PtpHeader) {
         let resp = DelayResp {
-            header: self.base_header(MessageType::DelayResp, req.sequence_id, 0x7f, 0),
+            // logMessageInterval = 0 (1 s minDelayReqInterval); 0x7f wäre "bogus".
+            header: self.base_header(MessageType::DelayResp, req.sequence_id, 0, 0),
             receive_timestamp: PtpTimestamp::from_nanos(now_nanos()), // t4
             requesting_port: req.source_port,
         };
