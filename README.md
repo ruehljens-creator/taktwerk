@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/ruehljens-creator/taktwerk/actions/workflows/ci.yml/badge.svg)](https://github.com/ruehljens-creator/taktwerk/actions/workflows/ci.yml)
 
+**🇩🇪 Deutsch** · [🇬🇧 English](README.en.md)
+
 > **Open, Dante-free AES67 / ST 2110-30 / RAVENNA audio-over-IP node in Rust** —
 > a virtual sound card with built-in **NMOS** control plane (IS-04/IS-05), **PTP**
 > (IEEE 1588) grandmaster/slave, **SAP + RAVENNA (mDNS/RTSP)** discovery, and a
