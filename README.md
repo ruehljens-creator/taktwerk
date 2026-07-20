@@ -44,11 +44,11 @@ portablen Kern + Router mit (virtuelles Gerät später). Das Leitprinzip:
 | Baustein | Linux | macOS (arm64) | Windows | Wo |
 |---|:---:|:---:|:---:|---|
 | RTP L24/L16, SDP, SAP, PTP-BMCA, ASRC-Servo | ✅ | ✅ | ✅ | `taktwerk-core` (rein) |
-| Sockets / Multicast / IGMP | ✅ | ✅ | ✅ | `taktwerk-net` *(geplant)* |
+| Sockets / Multicast / IGMP | ✅ | ✅ | ✅ | `taktwerk-net` |
 | Virtuelle Soundkarte | ✅ ALSA `snd-aloop` | Pro Tools Bridge / BlackHole | — *(später)* | `taktwerk-audio` (cpal) |
-| mDNS-Discovery | Avahi / pure-Rust | Bonjour nativ | pure-Rust | `taktwerk-discovery` *(geplant)* |
+| mDNS-Discovery | Avahi / pure-Rust | Bonjour nativ | pure-Rust | `taktwerk-discovery` |
 | PTP-Timestamping | SW + `SO_TIMESTAMPING` | nur SW | nur SW | `taktwerk-ptp` (Trait) |
-| Router (NMOS/SAP), Web-UI | ✅ | ✅ | ✅ | `taktwerk-router` / UI *(geplant)* |
+| Router (NMOS/SAP), Web-UI | ✅ | ✅ | ✅ | `taktwerk-router` / UI |
 
 Die einzige harte OS-Divergenz ist die **virtuelle Soundkarte** — genau der
 Teil, der als Compose-Baustein (BlackHole u. a.) eingebunden, nicht selbst
@@ -75,8 +75,8 @@ taktwerk-endpoint   Media-Loop: TxStream (Capture→RTP) + RxStream (RTP→Playb
 taktwerk-router     NMOS IS-04 Node-API + IS-05 Connection-API (Axum)
 taktwerk-discovery  RAVENNA: mDNS/DNS-SD (browse+register) + RTSP (DESCRIBE)
 taktwerk-daemon     Bin `taktwerkd`: REST-API + Web-UI + SAP/RAVENNA-Discovery +
-                    TX/RX + NMOS + RTSP-Server + PTP-Slave; core::ptp: Wire +
-                    BMCA + Servo + Slave + PtpTimeSource
+                    TX/RX + NMOS + RTSP-Server + PTP-Slave/Master; core::ptp:
+                    Wire + BMCA + Servo + Slave + PtpTimeSource
 
 Interop verifiziert: RTP L24 ↔ GStreamer (beide Richtungen), PTP-Slave lockt an
 linuxptp `ptp4l`-Grandmaster, RAVENNA-mDNS+RTSP-Discovery. RAVENNA-kompatibel
@@ -95,13 +95,26 @@ den PTP-Grandmaster und richtet seine Media-Clock danach aus (`GET /ptp`).
 
 Der Daemon liefert unter `http://<TAKTWERK_HTTP>/` eine Bedien-Oberfläche
 (Knoten-Status, TX/RX-Steuerung mit Live-Zählern, SAP-Discovery, **Geräte-Übersicht
-und Netzwerk-Traffic**). Die NMOS-APIs liegen auf `TAKTWERK_NMOS`
+und Netzwerk-Traffic**, dazu ein **Clock-Panel** mit Drift und GNSS-Satelliten-
+Status). Die NMOS-APIs liegen auf `TAKTWERK_NMOS`
 (Default `127.0.0.1:7789`) unter `/x-nmos/`.
 
 **Geräte & Traffic** (`GET /devices`, `GET /traffic`): pro Absender-IP ein Gerät
 mit bestem bekannten Namen (SAP-Session / PTP-Clock-ID) und Traffic je Protokoll
 (Pakete, Bytes, pps/bps). **Kein Sniffer** — gezählt wird nur der SAP-/PTP-
 Control-Traffic und RTP der abonnierten Streams, die der Knoten ohnehin sieht.
+
+## Taktung & GPS
+
+Ein eigener Leitfaden beschreibt, wie ein Knoten getaktet werden kann und wie man
+einen präzisen GPS-/GNSS-Takt in einen Rechner bekommt (USB-GNSS-Maus mit PPS,
+Intel-NIC + GPS-Modul auf SDP-Pin, PCIe-TimeCard …):
+[`docs/clocking.md`](docs/clocking.md).
+
+Der PTP-Master unterstützt das **ST-2059-2-Broadcast-Profil**
+(`TAKTWERK_PTP_PROFILE=st2059` → Domain 127, Sync 8/s, Announce 4/s) sowie
+Einzel-Stellschrauben (`TAKTWERK_PTP_DOMAIN`, `…_PRIORITY1/2`, `…_CLOCK_CLASS`,
+`…_SYNC_MS`, `…_ANNOUNCE_MS`).
 
 ## Debug-Log
 
